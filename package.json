@@ -1,0 +1,33 @@
+{
+  "name": "fashion_store",
+  "version": "1.0.0",
+  "description": "DripKart is a modern fashion and sneaker e-commerce platform built for streetwear enthusiasts.   The platform allows users to explore trending footwear, clothing, and accessories with a smooth and responsive shopping experience.",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/tanixxq/Fashion_store.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/tanixxq/Fashion_store/issues"
+  },
+  "homepage": "https://github.com/tanixxq/Fashion_store#readme",
+  "private": true,
+  "dependencies": {
+    "react": "^19.2.6",
+    "react-dom": "^19.2.6"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-react": "^6.0.2",
+    "autoprefixer": "^10.5.0",
+    "postcss": "^8.5.15",
+    "tailwindcss": "^4.3.0",
+    "vite": "^8.0.13"
+  }
+}
