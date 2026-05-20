@@ -28,6 +28,18 @@ Backend:
 Database:
 - MongoDB
 
+## 📁 Project Structure
+
+- `frontend` → React + Vite storefront UI
+- `backend` → API/server folder (backend implementation target)
+
+## ▶️ Run Frontend
+
+```bash
+npm --prefix frontend install
+npm --prefix frontend run dev
+```
+
 ## 🌟 Future Enhancements
 
 - AI-based recommendations
@@ -37,5 +49,3 @@ Database:
 - Dark Mode
 
 ## 👨‍💻 Author
-
-Tanishq Singhal
