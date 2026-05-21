@@ -2,14 +2,23 @@ import mongoose from "mongoose";
 
 export async function connectDB() {
   const uri = process.env.MONGODB_URI;
+
   if (!uri) {
     throw new Error("MONGODB_URI is not set in environment");
   }
 
-  mongoose.set("strictQuery", true);
-  await mongoose.connect(uri, {
-    serverSelectionTimeoutMS: 8000,
-    socketTimeoutMS: 45000,
-  });
-  console.log("MongoDB connected");
+  try {
+    mongoose.set("strictQuery", true);
+
+    await mongoose.connect(uri, {
+      serverSelectionTimeoutMS: 8000,
+      socketTimeoutMS: 45000,
+    });
+
+    console.log("MongoDB connected ✅");
+  } catch (error) {
+    console.log("MongoDB connection failed ❌");
+    console.log(error.message);
+    throw error;
+  }
 }

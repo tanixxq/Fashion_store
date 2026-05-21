@@ -1,6 +1,5 @@
 import { Router } from "express";
 import authRoutes from "./auth.routes.js";
-import productsRoutes from "./products.routes.js";
 import outfitsRoutes from "./outfits.routes.js";
 import ordersRoutes from "./orders.routes.js";
 import userRoutes from "./user.routes.js";
@@ -23,7 +22,7 @@ router.get("/health", (req, res) => {
 });
 
 router.use("/auth", authRoutes);
-router.use("/products", productsRoutes);
+// Products mounted in index.js at /api/products (beginner + DB/dummy)
 router.use("/outfits", outfitsRoutes);
 router.use("/orders", ordersRoutes);
 router.use("/users", userRoutes);

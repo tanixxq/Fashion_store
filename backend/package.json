@@ -8,14 +8,19 @@
     "dev": "node --watch src/index.js",
     "start": "node src/index.js",
     "seed": "node src/scripts/seed.js",
-    "seed:force": "node src/scripts/seed.js --force"
+    "seed:force": "node src/scripts/seed.js --force",
+    "seed:dummy": "node src/scripts/seedDummy.js"
   },
   "dependencies": {
     "bcryptjs": "^3.0.2",
-    "cors": "^2.8.5",
-    "dotenv": "^16.5.0",
-    "express": "^5.1.0",
+    "cors": "^2.8.6",
+    "dotenv": "^16.6.1",
+    "express": "^5.2.1",
     "jsonwebtoken": "^9.0.2",
-    "mongoose": "^8.15.1"
-  }
+    "mongoose": "^8.24.0",
+    "nodemon": "^3.1.14"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC"
 }
