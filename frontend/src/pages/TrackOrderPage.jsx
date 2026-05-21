@@ -1,14 +1,48 @@
 import { useState } from "react";
 import { getOrderStepIndex, ORDER_STEPS } from "../utils/storage";
 
-export default function TrackOrderPage({ orders, onBack, highlightOrderId }) {
+export default function TrackOrderPage({
+  orders,
+  onBack,
+  highlightOrderId,
+  useApi,
+  onTrackOrder,
+}) {
   const [searchId, setSearchId] = useState(highlightOrderId || "");
+  const [trackedOrders, setTrackedOrders] = useState([]);
+  const [tracking, setTracking] = useState(false);
+  const [trackError, setTrackError] = useState("");
+
+  const allOrders = [...orders];
+  for (const o of trackedOrders) {
+    if (!allOrders.some((x) => x.id === o.id)) allOrders.push(o);
+  }
 
   const matched = searchId.trim()
-    ? orders.filter((o) =>
+    ? allOrders.filter((o) =>
         o.id.toLowerCase().includes(searchId.trim().toLowerCase())
       )
-    : orders;
+    : allOrders;
+
+  const handleTrack = async () => {
+    const id = searchId.trim();
+    if (!id) return;
+    setTrackError("");
+
+    if (useApi && onTrackOrder) {
+      setTracking(true);
+      try {
+        const order = await onTrackOrder(id);
+        setTrackedOrders((prev) =>
+          prev.some((o) => o.id === order.id) ? prev : [order, ...prev]
+        );
+      } catch (err) {
+        setTrackError(err.message || "Order not found");
+      } finally {
+        setTracking(false);
+      }
+    }
+  };
 
   return (
     <div className="page-shell">
@@ -31,13 +65,20 @@ export default function TrackOrderPage({ orders, onBack, highlightOrderId }) {
         <button
           type="button"
           className="btn-primary"
-          onClick={() => setSearchId(searchId.trim())}
+          disabled={tracking}
+          onClick={handleTrack}
         >
-          Track
+          {tracking ? "Searching…" : "Track"}
         </button>
       </div>
 
-      {orders.length === 0 ? (
+      {trackError && (
+        <p className="empty-state" style={{ marginTop: "0.5rem" }}>
+          {trackError}
+        </p>
+      )}
+
+      {allOrders.length === 0 ? (
         <div className="page-card empty-page">
           <p>No orders yet. Place your first order from checkout.</p>
           <button type="button" className="btn-primary" onClick={onBack}>

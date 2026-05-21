@@ -1,4 +1,5 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import { fetchProductDetails } from "../api/client";
 import { getProductDetails } from "../data/productDetails";
 import {
   categorySizeChartMap,
@@ -9,16 +10,36 @@ import {
 export default function ProductModal({
   product,
   isFavourite,
+  useApi,
   onClose,
   onToggleFavourite,
   onAddToCart,
 }) {
   const [selectedSize, setSelectedSize] = useState("");
   const [showSizeChart, setShowSizeChart] = useState(false);
+  const [info, setInfo] = useState(null);
+
+  useEffect(() => {
+    if (!product) return undefined;
+    setInfo(getProductDetails(product));
+
+    if (!useApi) return undefined;
+
+    let cancelled = false;
+    fetchProductDetails(product.id)
+      .then((res) => {
+        if (!cancelled) setInfo(res.details);
+      })
+      .catch(() => {});
+
+    return () => {
+      cancelled = true;
+    };
+  }, [product, useApi]);
 
   if (!product) return null;
 
-  const info = getProductDetails(product);
+  const details = info || getProductDetails(product);
   const sizes = getSizesForCategory(product.category);
   const chartKey = categorySizeChartMap[product.category];
   const chart = chartKey ? sizeCharts[chartKey] : null;
@@ -56,27 +77,27 @@ export default function ProductModal({
               <span>⭐ {product.rating}</span>
             </div>
 
-            <p className="product-detail-desc">{info.details}</p>
+            <p className="product-detail-desc">{details.details}</p>
 
             <dl className="product-specs">
               <div>
                 <dt>Material</dt>
-                <dd>{info.material}</dd>
+                <dd>{details.material}</dd>
               </div>
               <div>
                 <dt>Fit</dt>
-                <dd>{info.fit}</dd>
+                <dd>{details.fit}</dd>
               </div>
               <div>
                 <dt>Care</dt>
-                <dd>{info.care}</dd>
+                <dd>{details.care}</dd>
               </div>
             </dl>
 
             <div className="product-features">
               <h4>Features</h4>
               <ul>
-                {info.features.map((f) => (
+                {details.features.map((f) => (
                   <li key={f}>{f}</li>
                 ))}
               </ul>

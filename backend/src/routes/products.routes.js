@@ -1,104 +1,77 @@
 import { Router } from "express";
 import Product from "../models/Product.js";
+import { dummyProducts } from "../data/dummyProducts.js";
 import { asyncHandler } from "../utils/asyncHandler.js";
 import { formatProduct } from "../utils/formatProduct.js";
-import { getProductDetails } from "../data/productDetails.js";
 
 const router = Router();
-const CATEGORIES = [
-  "T-Shirts",
-  "Hoodies",
-  "Sweatshirts",
-  "Bottoms",
-  "Caps",
-  "Jackets",
-  "Sneakers",
-  "Glasses",
-];
 
-function resolveSort(sort) {
-  switch (sort) {
-    case "price-asc":
-    case "price-low":
-      return { price: 1 };
-    case "price-desc":
-    case "price-high":
-      return { price: -1 };
-    case "rating":
-      return { rating: -1 };
-    default:
-      return { legacyId: 1 };
-  }
-}
-
-router.get(
-  "/categories",
-  asyncHandler(async (req, res) => {
-    const counts = await Product.aggregate([
-      { $group: { _id: "$category", count: { $sum: 1 } } },
-    ]);
-    const map = Object.fromEntries(counts.map((c) => [c._id, c.count]));
-    const byCategory = CATEGORIES.reduce((acc, cat) => {
-      acc[cat] = map[cat] || 0;
-      return acc;
-    }, {});
-    const total = await Product.countDocuments();
-    res.json({ categories: CATEGORIES, counts: { ...byCategory, total } });
-  })
-);
-
+/**
+ * Step 5 — GET /api/products
+ *
+ * 1. If MongoDB has products → return them
+ * 2. If database is empty → return dummyProducts (so frontend always has data)
+ */
 router.get(
   "/",
   asyncHandler(async (req, res) => {
-    const { category, search, sort, filter } = req.query;
-    const query = {};
+    console.log("[HIT] GET /api/products");
 
-    if (category && category !== "All Categories") {
-      query.category = category;
+    const count = await Product.countDocuments();
+
+    if (count === 0) {
+      console.log("  → No products in DB, sending dummy data");
+      return res.json({
+        success: true,
+        source: "dummy",
+        products: dummyProducts,
+        total: dummyProducts.length,
+      });
     }
 
-    if (filter === "new") query.badge = "NEW";
-    if (filter === "hot") query.badge = "HOT";
+    const docs = await Product.find().sort({ legacyId: 1, createdAt: 1 }).lean();
+    const products = docs.map(formatProduct);
 
-    if (search?.trim()) {
-      const term = search.trim();
-      query.$or = [
-        { name: { $regex: term, $options: "i" } },
-        { description: { $regex: term, $options: "i" } },
-        { category: { $regex: term, $options: "i" } },
-      ];
-    }
-
-    const docs = await Product.find(query).sort(resolveSort(sort)).lean();
     res.json({
-      products: docs.map(formatProduct),
-      total: docs.length,
+      success: true,
+      source: "database",
+      products,
+      total: products.length,
     });
   })
 );
 
+/**
+ * Step 1 — GET /api/products/:id
+ * Finds product by numeric id, legacyId, or MongoDB _id
+ */
 router.get(
-  "/:legacyId/details",
+  "/:id",
   asyncHandler(async (req, res) => {
-    const legacyId = Number(req.params.legacyId);
-    const doc = await Product.findOne({ legacyId }).lean();
-    if (!doc) {
-      return res.status(404).json({ message: "Product not found" });
-    }
-    const product = formatProduct(doc);
-    res.json({ product, details: getProductDetails(product) });
-  })
-);
+    const { id } = req.params;
+    console.log(`[HIT] GET /api/products/${id}`);
 
-router.get(
-  "/:legacyId",
-  asyncHandler(async (req, res) => {
-    const legacyId = Number(req.params.legacyId);
-    const doc = await Product.findOne({ legacyId });
-    if (!doc) {
-      return res.status(404).json({ message: "Product not found" });
+    const numId = Number(id);
+    if (!Number.isNaN(numId)) {
+      const byLegacy = await Product.findOne({ legacyId: numId });
+      if (byLegacy) {
+        return res.json({ success: true, product: formatProduct(byLegacy) });
+      }
     }
-    res.json({ product: formatProduct(doc) });
+
+    if (id.match(/^[a-f\d]{24}$/i)) {
+      const byMongoId = await Product.findById(id);
+      if (byMongoId) {
+        return res.json({ success: true, product: formatProduct(byMongoId) });
+      }
+    }
+
+    const fromDummy = dummyProducts.find((p) => String(p.id) === String(id));
+    if (fromDummy) {
+      return res.json({ success: true, product: fromDummy, source: "dummy" });
+    }
+
+    res.status(404).json({ success: false, message: "Product not found" });
   })
 );
 

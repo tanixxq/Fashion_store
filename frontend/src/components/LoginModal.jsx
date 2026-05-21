@@ -13,8 +13,10 @@ export default function LoginModal({ onClose, onLogin }) {
     if (!form.email.trim() || form.password.length < 4) return;
 
     onLogin({
+      mode,
       name: mode === "signup" ? form.name.trim() || "Shopper" : form.email.split("@")[0],
       email: form.email.trim(),
+      password: form.password,
     });
   };
 

@@ -1,17 +1,36 @@
 import { useEffect, useMemo, useState } from "react";
 import QuickActions from "./components/QuickActions";
 import InfoModal from "./components/InfoModal";
-import LoginModal from "./components/LoginModal";
+import ProtectedRoute from "./components/ProtectedRoute";
 import Logo from "./components/Logo";
 import ProductModal from "./components/ProductModal";
 import PromoBanner from "./components/PromoBanner";
+import { useAuth } from "./context/AuthContext";
+import { useCart } from "./context/CartContext";
+import CartPage from "./pages/CartPage";
+import LoginPage from "./pages/LoginPage";
+import ProductDetailPage from "./pages/ProductDetailPage";
+import SignupPage from "./pages/SignupPage";
+import {
+  checkApiHealth,
+  createOrder,
+  fetchContent,
+  fetchMe,
+  fetchMyOrders,
+  fetchOutfits,
+  setToken,
+  subscribeNewsletter,
+  syncUserData,
+  trackOrder,
+} from "./api/client";
+import { useProducts } from "./hooks/useProducts";
 import {
   categories,
   outfitSetTypes,
-  outfitSets,
+  outfitSets as staticOutfitSets,
   perks,
-  products,
-  stats,
+  products as staticProducts,
+  stats as staticStats,
   styleInspiration,
   testimonials,
 } from "./data/products";
@@ -34,7 +53,21 @@ function App() {
   const [selectedCategory, setSelectedCategory] = useState("All Categories");
   const [searchQuery, setSearchQuery] = useState("");
   const [sortBy, setSortBy] = useState("featured");
-  const [cart, setCart] = useState(() => loadJson("dripkart_cart", []));
+  const {
+    cart,
+    setCart,
+    cartCount,
+    cartTotal,
+    addToCart,
+    addOutfitToCart,
+    updateCartQty,
+    removeFromCart,
+    clearCart,
+    toast,
+    showToast,
+  } = useCart();
+  const { user, setUser, logout, syncUserData } = useAuth();
+
   const [wishlist, setWishlist] = useState(() =>
     loadJson("dripkart_favourites_products", [])
   );
@@ -43,23 +76,67 @@ function App() {
   );
   const [orders, setOrders] = useState(() => loadJson("dripkart_orders", []));
   const [isMenuOpen, setIsMenuOpen] = useState(false);
-  const [isCartOpen, setIsCartOpen] = useState(false);
-  const [toast, setToast] = useState(null);
   const [newsletterEmail, setNewsletterEmail] = useState("");
+  const [detailProductId, setDetailProductId] = useState(null);
   const [outfitFilter, setOutfitFilter] = useState("All Sets");
   const [selectedOutfit, setSelectedOutfit] = useState(null);
   const [outfitSizes, setOutfitSizes] = useState({});
-  const [user, setUser] = useState(() => loadJson("dripkart_user", null));
-  const [isLoginOpen, setIsLoginOpen] = useState(false);
   const [catalogFilter, setCatalogFilter] = useState(null);
   const [selectedProduct, setSelectedProduct] = useState(null);
   const [infoModal, setInfoModal] = useState(null);
   const [promoDismissed, setPromoDismissed] = useState(() =>
     loadJson("dripkart_promo_dismissed", false)
   );
+  const {
+    products: catalogProducts,
+    setProducts: setCatalogProducts,
+    loading: productsLoading,
+    error: productsError,
+    fromApi: useApi,
+  } = useProducts(staticProducts);
+  const [catalogOutfits, setCatalogOutfits] = useState(staticOutfitSets);
+  const [storeContent, setStoreContent] = useState(null);
 
-  useEffect(() => saveJson("dripkart_cart", cart), [cart]);
-  useEffect(() => saveJson("dripkart_user", user), [user]);
+  useEffect(() => {
+    let cancelled = false;
+
+    (async () => {
+      const online = await checkApiHealth();
+      if (!online || cancelled) return;
+
+      try {
+        const [outfitRes, contentRes] = await Promise.all([
+          fetchOutfits(),
+          fetchContent(),
+        ]);
+        if (cancelled) return;
+        setCatalogOutfits(outfitRes.outfits);
+        setStoreContent(contentRes);
+
+        const token = localStorage.getItem("dripkart_token");
+        if (token) {
+          const { user: sessionUser } = await fetchMe();
+          if (!cancelled && sessionUser) {
+            setUser({ name: sessionUser.name, email: sessionUser.email, role: sessionUser.role });
+            if (sessionUser.cart?.length) setCart(sessionUser.cart);
+            if (sessionUser.wishlist?.length) setWishlist(sessionUser.wishlist);
+            if (sessionUser.favouriteOutfits?.length) {
+              setFavouriteOutfits(sessionUser.favouriteOutfits);
+            }
+          }
+          const { orders: serverOrders } = await fetchMyOrders();
+          if (!cancelled && serverOrders?.length) setOrders(serverOrders);
+        }
+      } catch {
+        /* outfits/content stay on static fallback */
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
   useEffect(() => saveJson("dripkart_favourites_products", wishlist), [wishlist]);
   useEffect(
     () => saveJson("dripkart_favourites_outfits", favouriteOutfits),
@@ -88,80 +165,25 @@ function App() {
   };
 
   const goCheckout = () => {
-    setIsCartOpen(false);
+    if (!user) {
+      setPage("login");
+      showToast("Please sign in to checkout");
+      return;
+    }
     setPage("checkout");
     window.scrollTo({ top: 0, behavior: "smooth" });
   };
 
-  const showToast = (message) => {
-    setToast(message);
-    setTimeout(() => setToast(null), 2600);
+  const openProductDetail = (productId) => {
+    setDetailProductId(productId);
+    setPage("product-detail");
+    window.scrollTo({ top: 0, behavior: "smooth" });
   };
 
-  const addOutfitToCart = (outfit) => {
+  const handleOutfitAddToCart = (outfit) => {
     const size = outfitSizes[outfit.id] || outfit.sizes[1] || outfit.sizes[0];
-    const cartItem = {
-      id: outfit.id,
-      name: `${outfit.name} (Set · ${size})`,
-      price: outfit.price,
-      image: outfit.image,
-      qty: 1,
-      isSet: true,
-    };
-    setCart((prev) => {
-      const existing = prev.find((item) => item.id === outfit.id);
-      if (existing) {
-        return prev.map((item) =>
-          item.id === outfit.id ? { ...item, qty: item.qty + 1 } : item
-        );
-      }
-      return [...prev, cartItem];
-    });
-    showToast(`"${outfit.name}" outfit set added to bag`);
+    addOutfitToCart(outfit, size);
     setSelectedOutfit(null);
-  };
-
-  const updateCartQty = (id, delta) => {
-    setCart((prev) =>
-      prev
-        .map((item) =>
-          item.id === id
-            ? { ...item, qty: Math.max(0, item.qty + delta) }
-            : item
-        )
-        .filter((item) => item.qty > 0)
-    );
-  };
-
-  const removeFromCart = (id) => {
-    setCart((prev) => prev.filter((item) => item.id !== id));
-    showToast("Removed from bag");
-  };
-
-  const addToCart = (product, size) => {
-    const cartLineId = size ? `${product.id}-${size}` : String(product.id);
-    const displayName = size ? `${product.name} · Size ${size}` : product.name;
-
-    setCart((prev) => {
-      const existing = prev.find((item) => item.id === cartLineId);
-      if (existing) {
-        return prev.map((item) =>
-          item.id === cartLineId ? { ...item, qty: item.qty + 1 } : item
-        );
-      }
-      return [
-        ...prev,
-        {
-          ...product,
-          id: cartLineId,
-          productId: product.id,
-          name: displayName,
-          size: size || null,
-          qty: 1,
-        },
-      ];
-    });
-    showToast(`${displayName} added to cart`);
   };
 
   const toggleWishlist = (productId) => {
@@ -188,55 +210,81 @@ function App() {
     });
   };
 
-  const placeOrder = (order) => {
-    setOrders((prev) => [order, ...prev]);
-    setCart([]);
-    setHighlightOrderId(order.id);
-    setPage("track");
-    showToast(`Order ${order.id} placed successfully!`);
-    window.scrollTo({ top: 0, behavior: "smooth" });
+  const placeOrder = async (order) => {
+    try {
+      let saved = order;
+      if (useApi) {
+        const res = await createOrder({
+          items: order.items,
+          total: order.total,
+          payment: order.payment,
+          shipping: order.shipping,
+        });
+        saved = res.order;
+      }
+      setOrders((prev) => [saved, ...prev]);
+      clearCart();
+      setHighlightOrderId(saved.id);
+      setPage("track");
+      showToast(`Order ${saved.id} placed successfully!`);
+      window.scrollTo({ top: 0, behavior: "smooth" });
+    } catch (err) {
+      showToast(err.message || "Could not place order. Try again.");
+    }
   };
 
   const favCount = wishlist.length + favouriteOutfits.length;
 
-  const handleLogin = (profile) => {
-    setUser(profile);
-    setIsLoginOpen(false);
-    showToast(`Welcome, ${profile.name}!`);
-  };
-
   const handleLogout = () => {
-    setUser(null);
+    logout();
     showToast("You have been logged out.");
   };
 
-  const cartCount = cart.reduce((sum, item) => sum + item.qty, 0);
-  const cartTotal = cart.reduce((sum, item) => sum + item.price * item.qty, 0);
+  useEffect(() => {
+    if (!useApi || !user) return undefined;
+    const timer = setTimeout(() => {
+      syncUserData({ cart, wishlist, favouriteOutfits }).catch(() => {});
+    }, 900);
+    return () => clearTimeout(timer);
+  }, [cart, wishlist, favouriteOutfits, user, useApi]);
+
+  const displayStats = useMemo(() => {
+    if (storeContent?.stats) return storeContent.stats;
+    return staticStats.map((s) =>
+      s.label === "Curated Styles"
+        ? { ...s, value: `${catalogProducts.length}+` }
+        : s
+    );
+  }, [storeContent, catalogProducts.length]);
+
+  const displayInspiration = storeContent?.styleInspiration ?? styleInspiration;
+  const displayPerks = storeContent?.perks ?? perks;
+  const displayTestimonials = storeContent?.testimonials ?? testimonials;
 
   const categoryCounts = useMemo(
     () =>
       categories.reduce((acc, category) => {
-        acc[category] = products.filter((p) => p.category === category).length;
+        acc[category] = catalogProducts.filter((p) => p.category === category).length;
         return acc;
       }, {}),
-    []
+    [catalogProducts]
   );
 
   const filteredOutfits = useMemo(() => {
-    if (outfitFilter === "All Sets") return outfitSets;
-    return outfitSets.filter((o) => o.type === outfitFilter);
-  }, [outfitFilter]);
+    if (outfitFilter === "All Sets") return catalogOutfits;
+    return catalogOutfits.filter((o) => o.type === outfitFilter);
+  }, [outfitFilter, catalogOutfits]);
 
   const trendingProducts = useMemo(
     () =>
-      [...products]
+      [...catalogProducts]
         .sort((a, b) => b.rating - a.rating)
         .slice(0, 3),
-    []
+    [catalogProducts]
   );
 
   const filteredProducts = useMemo(() => {
-    let list = [...products];
+    let list = [...catalogProducts];
 
     if (selectedCategory !== "All Categories") {
       list = list.filter((p) => p.category === selectedCategory);
@@ -261,7 +309,7 @@ function App() {
     else list.sort((a, b) => (b.badge === "HOT" ? 1 : 0) - (a.badge === "HOT" ? 1 : 0));
 
     return list;
-  }, [selectedCategory, searchQuery, sortBy, catalogFilter]);
+  }, [catalogProducts, selectedCategory, searchQuery, sortBy, catalogFilter]);
 
   const selectCategory = (cat) => {
     setSelectedCategory(cat);
@@ -320,18 +368,12 @@ function App() {
     <div className="app">
       {toast && <div className="toast">{toast}</div>}
 
-      {isLoginOpen && (
-        <LoginModal
-          onClose={() => setIsLoginOpen(false)}
-          onLogin={handleLogin}
-        />
-      )}
-
       {infoModal && <InfoModal type={infoModal} onClose={() => setInfoModal(null)} />}
 
       {selectedProduct && (
         <ProductModal
           product={selectedProduct}
+          useApi={useApi}
           isFavourite={wishlist.includes(selectedProduct.id)}
           onClose={() => setSelectedProduct(null)}
           onToggleFavourite={() => toggleWishlist(selectedProduct.id)}
@@ -365,7 +407,7 @@ function App() {
                 onClick={() => selectCategory("All Categories")}
               >
                 <span>All Categories</span>
-                <em>{products.length}</em>
+                <em>{catalogProducts.length}</em>
               </button>
               {categories.map((item) => (
                 <button
@@ -409,78 +451,6 @@ function App() {
                 ))}
               </div>
             </div>
-          </aside>
-        </>
-      )}
-
-      {isCartOpen && (
-        <>
-          <button
-            type="button"
-            className="overlay"
-            aria-label="Close cart"
-            onClick={() => setIsCartOpen(false)}
-          />
-          <aside className="side-panel cart-panel open">
-            <div className="panel-head">
-              <div>
-                <span className="eyebrow">Your Bag</span>
-                <h3>Cart ({cartCount})</h3>
-              </div>
-              <button type="button" className="icon-btn" onClick={() => setIsCartOpen(false)}>
-                ✕
-              </button>
-            </div>
-            {cart.length === 0 ? (
-              <p className="empty-state">Your cart is empty. Start adding your favorites.</p>
-            ) : (
-              <>
-                <ul className="cart-list">
-                  {cart.map((item) => (
-                    <li key={item.id}>
-                      <img src={item.image} alt={item.name} />
-                      <div className="cart-item-info">
-                        <strong>{item.name}</strong>
-                        <span>₹{item.price}</span>
-                        <div className="cart-qty">
-                          <button
-                            type="button"
-                            onClick={() => updateCartQty(item.id, -1)}
-                            aria-label="Decrease quantity"
-                          >
-                            −
-                          </button>
-                          <em>{item.qty}</em>
-                          <button
-                            type="button"
-                            onClick={() => updateCartQty(item.id, 1)}
-                            aria-label="Increase quantity"
-                          >
-                            +
-                          </button>
-                        </div>
-                      </div>
-                      <button
-                        type="button"
-                        className="cart-remove"
-                        onClick={() => removeFromCart(item.id)}
-                        aria-label="Remove item"
-                      >
-                        ✕
-                      </button>
-                    </li>
-                  ))}
-                </ul>
-                <div className="cart-footer">
-                  <p>
-                    Total <strong>₹{cartTotal}</strong>
-                  </p>
-                  <button type="button" className="btn-primary" onClick={goCheckout}>
-                    Checkout
-                  </button>
-                </div>
-              </>
-            )}
           </aside>
         </>
       )}
@@ -557,16 +527,22 @@ function App() {
             ) : (
               <button
                 type="button"
-                className="login-btn"
-                onClick={() => setIsLoginOpen(true)}
+                className={`login-btn ${page === "login" ? "active" : ""}`}
+                onClick={() => {
+                  setPage("login");
+                  window.scrollTo({ top: 0, behavior: "smooth" });
+                }}
               >
                 Login
               </button>
             )}
             <button
               type="button"
-              className="cart-trigger"
-              onClick={() => setIsCartOpen(true)}
+              className={`cart-trigger ${page === "cart" ? "active" : ""}`}
+              onClick={() => {
+                setPage("cart");
+                window.scrollTo({ top: 0, behavior: "smooth" });
+              }}
             >
               Bag <span>{cartCount}</span>
             </button>
@@ -574,13 +550,51 @@ function App() {
         </div>
       </header>
 
-      {page === "checkout" && (
-        <CheckoutPage
-          cart={cart}
-          cartTotal={cartTotal}
+      {page === "login" && (
+        <LoginPage
           onBack={goHome}
-          onPlaceOrder={placeOrder}
+          onGoSignup={() => setPage("signup")}
+          onSuccess={() => {
+            showToast("Welcome back!");
+            setPage("home");
+          }}
         />
+      )}
+
+      {page === "signup" && (
+        <SignupPage
+          onBack={goHome}
+          onGoLogin={() => setPage("login")}
+          onSuccess={() => {
+            showToast("Account created!");
+            setPage("home");
+          }}
+        />
+      )}
+
+      {page === "product-detail" && detailProductId && (
+        <ProductDetailPage
+          productId={detailProductId}
+          fallbackProducts={catalogProducts}
+          onBack={goHome}
+          isFavourite={wishlist.includes(detailProductId)}
+          onToggleWishlist={toggleWishlist}
+        />
+      )}
+
+      {page === "cart" && (
+        <CartPage onBack={goHome} onCheckout={goCheckout} />
+      )}
+
+      {page === "checkout" && (
+        <ProtectedRoute user={user} onLogin={() => setPage("login")}>
+          <CheckoutPage
+            cart={cart}
+            cartTotal={cartTotal}
+            onBack={() => setPage("cart")}
+            onPlaceOrder={placeOrder}
+          />
+        </ProtectedRoute>
       )}
 
       {page === "favourites" && (
@@ -591,15 +605,20 @@ function App() {
           onRemoveProduct={(id) => toggleWishlist(id)}
           onRemoveOutfit={(id) => toggleFavouriteOutfit(id)}
           onAddToCart={addToCart}
-          onAddOutfitToCart={addOutfitToCart}
+          onAddOutfitToCart={handleOutfitAddToCart}
         />
       )}
 
       {page === "track" && (
         <TrackOrderPage
           orders={orders}
+          useApi={useApi}
           highlightOrderId={highlightOrderId}
           onBack={goHome}
+          onTrackOrder={async (orderId) => {
+            const res = await trackOrder(orderId);
+            return res.order;
+          }}
         />
       )}
 
@@ -661,7 +680,7 @@ function App() {
         </section>
 
         <section className="stats section">
-          {stats.map((item) => (
+          {displayStats.map((item) => (
             <button
               type="button"
               key={item.label}
@@ -695,7 +714,7 @@ function App() {
             <p>Mood-led looks before you browse the catalog.</p>
           </div>
           <div className="inspiration-grid">
-            {styleInspiration.map((item, i) => (
+            {displayInspiration.map((item, i) => (
               <article
                 key={item.quote}
                 className="inspire-card"
@@ -731,7 +750,7 @@ function App() {
           </div>
 
           <div className="perks-row">
-            {perks.map((perk) => (
+            {displayPerks.map((perk) => (
               <button
                 type="button"
                 key={perk.title}
@@ -828,7 +847,7 @@ function App() {
                       <button
                         type="button"
                         className="btn-primary"
-                        onClick={() => addOutfitToCart(outfit)}
+                        onClick={() => handleOutfitAddToCart(outfit)}
                       >
                         Add Full Set
                       </button>
@@ -875,7 +894,7 @@ function App() {
               <button
                 type="button"
                 className="btn-primary full"
-                onClick={() => addOutfitToCart(selectedOutfit)}
+                onClick={() => handleOutfitAddToCart(selectedOutfit)}
               >
                 Add Complete Outfit to Cart
               </button>
@@ -897,8 +916,8 @@ function App() {
                   alt={product.name}
                   role="button"
                   tabIndex={0}
-                  onClick={() => setSelectedProduct(product)}
-                  onKeyDown={(e) => e.key === "Enter" && setSelectedProduct(product)}
+                  onClick={() => openProductDetail(product.id)}
+                  onKeyDown={(e) => e.key === "Enter" && openProductDetail(product.id)}
                 />
                 <div>
                   <span>{product.category}</span>
@@ -908,7 +927,7 @@ function App() {
                     <button
                       type="button"
                       className="btn-ghost"
-                      onClick={() => setSelectedProduct(product)}
+                      onClick={() => openProductDetail(product.id)}
                     >
                       View
                     </button>
@@ -985,9 +1004,15 @@ function App() {
             </select>
           </div>
 
-          {filteredProducts.length === 0 ? (
+          {productsLoading && (
+            <p className="empty-state">Loading products from API…</p>
+          )}
+          {productsError && !productsLoading && (
+            <p className="empty-state">API offline — showing saved catalog. ({productsError})</p>
+          )}
+          {!productsLoading && filteredProducts.length === 0 ? (
             <p className="empty-state">No products match your search. Try another keyword.</p>
-          ) : (
+          ) : !productsLoading ? (
             <div className="product-grid">
               {filteredProducts.map((product) => (
                 <article key={product.id} className="product-card">
@@ -995,8 +1020,8 @@ function App() {
                     className="product-media"
                     role="button"
                     tabIndex={0}
-                    onClick={() => setSelectedProduct(product)}
-                    onKeyDown={(e) => e.key === "Enter" && setSelectedProduct(product)}
+                    onClick={() => openProductDetail(product.id)}
+                    onKeyDown={(e) => e.key === "Enter" && openProductDetail(product.id)}
                   >
                     <img src={product.image} alt={product.name} />
                     {product.badge && (
@@ -1022,7 +1047,7 @@ function App() {
                       <button
                         type="button"
                         className="product-title-btn"
-                        onClick={() => setSelectedProduct(product)}
+                        onClick={() => openProductDetail(product.id)}
                       >
                         {product.name}
                       </button>
@@ -1043,7 +1068,7 @@ function App() {
                 </article>
               ))}
             </div>
-          )}
+          ) : null}
         </section>
 
         <section className="testimonials section">
@@ -1052,7 +1077,7 @@ function App() {
             <h2>Loved by the Community</h2>
           </div>
           <div className="testimonial-grid">
-            {testimonials.map((t) => (
+            {displayTestimonials.map((t) => (
               <blockquote key={t.name}>
                 <p>{t.text}</p>
                 <footer>
@@ -1068,10 +1093,19 @@ function App() {
             <h2>Join the Drip List</h2>
             <p>Get early access to drops, exclusive offers, and style edits.</p>
             <form
-              onSubmit={(e) => {
+              onSubmit={async (e) => {
                 e.preventDefault();
-                showToast("You're on the list! Welcome to DripKart.");
-                setNewsletterEmail("");
+                try {
+                  if (useApi) {
+                    const res = await subscribeNewsletter(newsletterEmail);
+                    showToast(res.message || "You're on the list!");
+                  } else {
+                    showToast("You're on the list! Welcome to DripKart.");
+                  }
+                  setNewsletterEmail("");
+                } catch (err) {
+                  showToast(err.message || "Could not subscribe");
+                }
               }}
             >
               <input
@@ -1110,7 +1144,7 @@ function App() {
           </div>
           <div>
             <h4>Account</h4>
-            <button type="button" className="footer-link" onClick={() => setIsLoginOpen(true)}>
+            <button type="button" className="footer-link" onClick={() => setPage("login")}>
               {user ? "Account" : "Login"}
             </button>
             <button type="button" className="footer-link" onClick={() => setPage("favourites")}>
