@@ -1,16 +1,28 @@
 import { useEffect, useMemo, useState } from "react";
+import { AnimatePresence, motion } from "framer-motion";
 import QuickActions from "./components/QuickActions";
 import InfoModal from "./components/InfoModal";
 import ProtectedRoute from "./components/ProtectedRoute";
 import Logo from "./components/Logo";
-import ProductModal from "./components/ProductModal";
 import PromoBanner from "./components/PromoBanner";
 import { useAuth } from "./context/AuthContext";
 import { useCart } from "./context/CartContext";
+import AboutPage from "./pages/AboutPage";
 import CartPage from "./pages/CartPage";
+import ContactPage from "./pages/ContactPage";
+import DeliveryPage from "./pages/DeliveryPage";
+import FAQPage from "./pages/FAQPage";
 import LoginPage from "./pages/LoginPage";
+import NewArrivalsPage from "./pages/NewArrivalsPage";
 import ProductDetailPage from "./pages/ProductDetailPage";
+import ShopPage from "./pages/ShopPage";
 import SignupPage from "./pages/SignupPage";
+import SizeGuidePage from "./pages/SizeGuidePage";
+import PageTransition from "./components/motion/PageTransition";
+import AnimatedCartBadge from "./components/ui/AnimatedCartBadge";
+import ProductCard from "./components/ui/ProductCard";
+import { ProductGridSkeleton } from "./components/ui/ProductCardSkeleton";
+import { useScrollHeader } from "./hooks/useScrollHeader";
 import {
   checkApiHealth,
   createOrder,
@@ -82,7 +94,6 @@ function App() {
   const [selectedOutfit, setSelectedOutfit] = useState(null);
   const [outfitSizes, setOutfitSizes] = useState({});
   const [catalogFilter, setCatalogFilter] = useState(null);
-  const [selectedProduct, setSelectedProduct] = useState(null);
   const [infoModal, setInfoModal] = useState(null);
   const [promoDismissed, setPromoDismissed] = useState(() =>
     loadJson("dripkart_promo_dismissed", false)
@@ -96,6 +107,10 @@ function App() {
   } = useProducts(staticProducts);
   const [catalogOutfits, setCatalogOutfits] = useState(staticOutfitSets);
   const [storeContent, setStoreContent] = useState(null);
+  const { hidden: headerHidden, scrolled: headerScrolled } = useScrollHeader();
+
+  const pageKey =
+    page === "product-detail" ? `product-${detailProductId}` : page;
 
   useEffect(() => {
     let cancelled = false;
@@ -161,6 +176,13 @@ function App() {
 
   const goHome = () => {
     setPage("home");
+    setDetailProductId(null);
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  };
+
+  const goToPage = (next) => {
+    setPage(next);
+    setIsMenuOpen(false);
     window.scrollTo({ top: 0, behavior: "smooth" });
   };
 
@@ -177,7 +199,7 @@ function App() {
   const openProductDetail = (productId) => {
     setDetailProductId(productId);
     setPage("product-detail");
-    window.scrollTo({ top: 0, behavior: "smooth" });
+    window.scrollTo({ top: 0, behavior: "auto" });
   };
 
   const handleOutfitAddToCart = (outfit) => {
@@ -320,40 +342,34 @@ function App() {
 
   const handleMenuHighlight = (item) => {
     setIsMenuOpen(false);
-    setPage("home");
-    setTimeout(() => {
-      if (item === "Complete Outfits") {
-        scrollToSection("outfits", 0);
-      } else if (item === "New Arrivals") {
-        setCatalogFilter("new");
-        setSelectedCategory("All Categories");
-        scrollToSection("shop", 0);
-        showToast("Showing new arrivals");
-      } else if (item === "Best Sellers") {
-        setCatalogFilter(null);
-        setSortBy("rating");
-        scrollToSection("shop", 0);
-        showToast("Sorted by best sellers");
-      } else if (item === "Limited Drops") {
-        setCatalogFilter("hot");
-        setOutfitFilter("All Sets");
-        scrollToSection("trending", 0);
-        showToast("Limited drops — hot picks");
-      }
-    }, 80);
+    if (item === "Complete Outfits") {
+      goHome();
+      setTimeout(() => scrollToSection("outfits", 0), 80);
+    } else if (item === "New Arrivals") {
+      goToPage("new-arrivals");
+    } else if (item === "Best Sellers") {
+      setCatalogFilter(null);
+      setSortBy("rating");
+      goToPage("shop");
+      showToast("Sorted by best sellers");
+    } else if (item === "Limited Drops") {
+      setCatalogFilter("hot");
+      goHome();
+      setTimeout(() => scrollToSection("trending", 0), 80);
+      showToast("Limited drops — hot picks");
+    }
   };
 
   const handleSupport = (item) => {
     setIsMenuOpen(false);
     if (item === "Track Order") {
-      setPage("track");
-      window.scrollTo({ top: 0, behavior: "smooth" });
+      goToPage("track");
     } else if (item === "Size Guide") {
-      setInfoModal("size");
+      goToPage("size-guide");
     } else if (item === "Returns") {
-      setInfoModal("returns");
+      goToPage("faq");
     } else if (item === "Help Desk") {
-      setInfoModal("help");
+      goToPage("contact");
     }
   };
 
@@ -366,20 +382,21 @@ function App() {
 
   return (
     <div className="app">
-      {toast && <div className="toast">{toast}</div>}
+      <AnimatePresence>
+        {toast && (
+          <motion.div
+            className="toast-motion"
+            initial={{ opacity: 0, y: 24, scale: 0.96 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            exit={{ opacity: 0, y: 12, scale: 0.96 }}
+            transition={{ type: "spring", stiffness: 400, damping: 28 }}
+          >
+            {toast}
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       {infoModal && <InfoModal type={infoModal} onClose={() => setInfoModal(null)} />}
-
-      {selectedProduct && (
-        <ProductModal
-          product={selectedProduct}
-          useApi={useApi}
-          isFavourite={wishlist.includes(selectedProduct.id)}
-          onClose={() => setSelectedProduct(null)}
-          onToggleFavourite={() => toggleWishlist(selectedProduct.id)}
-          onAddToCart={addToCart}
-        />
-      )}
 
       {isMenuOpen && (
         <>
@@ -455,7 +472,9 @@ function App() {
         </>
       )}
 
-      <header className="header">
+      <header
+        className={`header ${headerScrolled ? "header--scrolled" : ""} ${headerHidden ? "header--hidden" : ""}`}
+      >
         <div className="header-inner">
           <div className="brand">
             <button
@@ -482,40 +501,57 @@ function App() {
             </div>
           )}
 
-          <nav className="header-actions">
+          <nav className="header-nav" aria-label="Main navigation">
+            <button
+              type="button"
+              className={`nav-btn ${page === "shop" ? "active" : ""}`}
+              onClick={() => goToPage("shop")}
+            >
+              Shop
+            </button>
+            <button
+              type="button"
+              className={`nav-btn ${page === "new-arrivals" ? "active" : ""}`}
+              onClick={() => goToPage("new-arrivals")}
+            >
+              New Arrivals
+            </button>
             <button
               type="button"
               className={`nav-btn ${page === "favourites" ? "active" : ""}`}
-              onClick={() => {
-                setPage("favourites");
-                window.scrollTo({ top: 0, behavior: "smooth" });
-              }}
+              onClick={() => goToPage("favourites")}
             >
               Favourites {favCount > 0 && <em>{favCount}</em>}
             </button>
             <button
               type="button"
               className={`nav-btn ${page === "track" ? "active" : ""}`}
-              onClick={() => {
-                setPage("track");
-                window.scrollTo({ top: 0, behavior: "smooth" });
-              }}
+              onClick={() => goToPage("track")}
             >
               Track Order
             </button>
-            {page === "home" && (
+            {page === "home" ? (
               <>
                 <button type="button" className="nav-link" onClick={() => scrollToSection("outfits")}>
                   Outfit Sets
-                </button>
-                <button type="button" className="nav-link" onClick={() => scrollToSection("shop")}>
-                  Shop
                 </button>
                 <button type="button" className="nav-link" onClick={() => scrollToSection("trending")}>
                   Trending
                 </button>
               </>
+            ) : (
+              <>
+                <button type="button" className="nav-link" onClick={() => goToPage("about")}>
+                  About
+                </button>
+                <button type="button" className="nav-link" onClick={() => goToPage("contact")}>
+                  Contact
+                </button>
+              </>
             )}
+          </nav>
+
+          <div className="header-aside">
             {user ? (
               <div className="user-menu">
                 <span className="user-avatar">{user.name.charAt(0).toUpperCase()}</span>
@@ -528,29 +564,28 @@ function App() {
               <button
                 type="button"
                 className={`login-btn ${page === "login" ? "active" : ""}`}
-                onClick={() => {
-                  setPage("login");
-                  window.scrollTo({ top: 0, behavior: "smooth" });
-                }}
+                onClick={() => goToPage("login")}
               >
                 Login
               </button>
             )}
-            <button
+            <motion.button
               type="button"
               className={`cart-trigger ${page === "cart" ? "active" : ""}`}
-              onClick={() => {
-                setPage("cart");
-                window.scrollTo({ top: 0, behavior: "smooth" });
-              }}
+              onClick={() => goToPage("cart")}
+              whileHover={{ scale: 1.03 }}
+              whileTap={{ scale: 0.96 }}
             >
-              Bag <span>{cartCount}</span>
-            </button>
-          </nav>
+              Bag
+              <AnimatedCartBadge count={cartCount} />
+            </motion.button>
+          </div>
         </div>
       </header>
 
+      <AnimatePresence mode="wait">
       {page === "login" && (
+        <PageTransition key="login">
         <LoginPage
           onBack={goHome}
           onGoSignup={() => setPage("signup")}
@@ -559,9 +594,11 @@ function App() {
             setPage("home");
           }}
         />
+        </PageTransition>
       )}
 
       {page === "signup" && (
+        <PageTransition key="signup">
         <SignupPage
           onBack={goHome}
           onGoLogin={() => setPage("login")}
@@ -570,23 +607,100 @@ function App() {
             setPage("home");
           }}
         />
+        </PageTransition>
       )}
 
       {page === "product-detail" && detailProductId && (
+        <PageTransition key={pageKey}>
         <ProductDetailPage
           productId={detailProductId}
-          fallbackProducts={catalogProducts}
-          onBack={goHome}
-          isFavourite={wishlist.includes(detailProductId)}
+          allProducts={catalogProducts}
+          wishlist={wishlist}
+          onBack={() => goToPage("shop")}
+          onOpenProduct={openProductDetail}
+          onGoCart={() => goToPage("cart")}
+          isFavourite={wishlist.some((id) => String(id) === String(detailProductId))}
           onToggleWishlist={toggleWishlist}
         />
+        </PageTransition>
+      )}
+
+      {page === "shop" && (
+        <PageTransition key="shop">
+        <ShopPage
+          products={catalogProducts}
+          categories={categories}
+          selectedCategory={selectedCategory}
+          searchQuery={searchQuery}
+          sortBy={sortBy}
+          loading={productsLoading}
+          wishlist={wishlist}
+          onCategoryChange={setSelectedCategory}
+          onSearchChange={setSearchQuery}
+          onSortChange={setSortBy}
+          onOpenProduct={openProductDetail}
+          onToggleWishlist={toggleWishlist}
+          onAddToCart={addToCart}
+          onBack={goHome}
+        />
+        </PageTransition>
+      )}
+
+      {page === "new-arrivals" && (
+        <PageTransition key="new-arrivals">
+        <NewArrivalsPage
+          products={catalogProducts}
+          loading={productsLoading}
+          wishlist={wishlist}
+          onOpenProduct={openProductDetail}
+          onToggleWishlist={toggleWishlist}
+          onAddToCart={addToCart}
+          onBack={goHome}
+        />
+        </PageTransition>
+      )}
+
+      {page === "about" && (
+        <PageTransition key="about">
+          <AboutPage onBack={goHome} />
+        </PageTransition>
+      )}
+
+      {page === "contact" && (
+        <PageTransition key="contact">
+        <ContactPage
+          onBack={goHome}
+          onSubmit={() => showToast("Message sent! We'll reply within 24 hours.")}
+        />
+        </PageTransition>
+      )}
+
+      {page === "size-guide" && (
+        <PageTransition key="size-guide">
+          <SizeGuidePage onBack={goHome} />
+        </PageTransition>
+      )}
+
+      {page === "delivery" && (
+        <PageTransition key="delivery">
+        <DeliveryPage onBack={goHome} onTrack={() => goToPage("track")} />
+        </PageTransition>
+      )}
+
+      {page === "faq" && (
+        <PageTransition key="faq">
+          <FAQPage onBack={goHome} />
+        </PageTransition>
       )}
 
       {page === "cart" && (
+        <PageTransition key="cart">
         <CartPage onBack={goHome} onCheckout={goCheckout} />
+        </PageTransition>
       )}
 
       {page === "checkout" && (
+        <PageTransition key="checkout">
         <ProtectedRoute user={user} onLogin={() => setPage("login")}>
           <CheckoutPage
             cart={cart}
@@ -595,9 +709,11 @@ function App() {
             onPlaceOrder={placeOrder}
           />
         </ProtectedRoute>
+        </PageTransition>
       )}
 
       {page === "favourites" && (
+        <PageTransition key="favourites">
         <FavouritesPage
           favouriteProducts={wishlist}
           favouriteOutfits={favouriteOutfits}
@@ -607,9 +723,11 @@ function App() {
           onAddToCart={addToCart}
           onAddOutfitToCart={handleOutfitAddToCart}
         />
+        </PageTransition>
       )}
 
       {page === "track" && (
+        <PageTransition key="track">
         <TrackOrderPage
           orders={orders}
           useApi={useApi}
@@ -620,9 +738,11 @@ function App() {
             return res.order;
           }}
         />
+        </PageTransition>
       )}
 
       {page === "home" && (
+        <PageTransition key="home">
       <main>
         {!promoDismissed && (
           <PromoBanner
@@ -631,7 +751,7 @@ function App() {
           />
         )}
 
-        <section className="hero section">
+        <section className="hero section hero-premium">
           <div className="hero-copy">
             <span className="pill">Spring / Summer 2026</span>
             <h2>
@@ -1004,71 +1124,28 @@ function App() {
             </select>
           </div>
 
-          {productsLoading && (
-            <p className="empty-state">Loading products from API…</p>
-          )}
           {productsError && !productsLoading && (
             <p className="empty-state">API offline — showing saved catalog. ({productsError})</p>
           )}
-          {!productsLoading && filteredProducts.length === 0 ? (
+          {productsLoading ? (
+            <ProductGridSkeleton count={6} />
+          ) : filteredProducts.length === 0 ? (
             <p className="empty-state">No products match your search. Try another keyword.</p>
-          ) : !productsLoading ? (
+          ) : (
             <div className="product-grid">
-              {filteredProducts.map((product) => (
-                <article key={product.id} className="product-card">
-                  <div
-                    className="product-media"
-                    role="button"
-                    tabIndex={0}
-                    onClick={() => openProductDetail(product.id)}
-                    onKeyDown={(e) => e.key === "Enter" && openProductDetail(product.id)}
-                  >
-                    <img src={product.image} alt={product.name} />
-                    {product.badge && (
-                      <span className={`badge badge-${product.badge.toLowerCase()}`}>
-                        {product.badge}
-                      </span>
-                    )}
-                    <button
-                      type="button"
-                      className={`wish-btn ${wishlist.includes(product.id) ? "active" : ""}`}
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        toggleWishlist(product.id);
-                      }}
-                      aria-label="Add to favourites"
-                    >
-                      ♥
-                    </button>
-                  </div>
-                  <div className="product-body">
-                    <span className="product-cat">{product.category}</span>
-                    <h4>
-                      <button
-                        type="button"
-                        className="product-title-btn"
-                        onClick={() => openProductDetail(product.id)}
-                      >
-                        {product.name}
-                      </button>
-                    </h4>
-                    <p className="product-desc">{product.description}</p>
-                    <div className="product-meta">
-                      <strong>₹{product.price}</strong>
-                      <span>⭐ {product.rating}</span>
-                    </div>
-                    <button
-                      type="button"
-                      className="btn-primary full"
-                      onClick={() => addToCart(product)}
-                    >
-                      Add to Cart
-                    </button>
-                  </div>
-                </article>
+              {filteredProducts.map((product, index) => (
+                <ProductCard
+                  key={product.id}
+                  product={product}
+                  index={index}
+                  isFavourite={wishlist.some((id) => String(id) === String(product.id))}
+                  onOpen={openProductDetail}
+                  onToggleWishlist={toggleWishlist}
+                  onAddToCart={addToCart}
+                />
               ))}
             </div>
-          ) : null}
+          )}
         </section>
 
         <section className="testimonials section">
@@ -1122,7 +1199,9 @@ function App() {
           </div>
         </section>
       </main>
+        </PageTransition>
       )}
+      </AnimatePresence>
 
       <footer className="footer">
         <div className="footer-grid">
@@ -1132,14 +1211,32 @@ function App() {
           </div>
           <div>
             <h4>Shop</h4>
-            <button type="button" className="footer-link" onClick={() => { goHome(); scrollToSection("shop"); }}>
+            <button type="button" className="footer-link" onClick={() => goToPage("shop")}>
               All Products
+            </button>
+            <button type="button" className="footer-link" onClick={() => goToPage("new-arrivals")}>
+              New Arrivals
             </button>
             <button type="button" className="footer-link" onClick={() => { goHome(); scrollToSection("outfits"); }}>
               Outfit Sets
             </button>
-            <button type="button" className="footer-link" onClick={() => { goHome(); scrollToSection("trending"); }}>
-              Trending
+          </div>
+          <div>
+            <h4>Help</h4>
+            <button type="button" className="footer-link" onClick={() => goToPage("size-guide")}>
+              Size Guide
+            </button>
+            <button type="button" className="footer-link" onClick={() => goToPage("delivery")}>
+              Delivery
+            </button>
+            <button type="button" className="footer-link" onClick={() => goToPage("faq")}>
+              FAQ
+            </button>
+            <button type="button" className="footer-link" onClick={() => goToPage("contact")}>
+              Contact
+            </button>
+            <button type="button" className="footer-link" onClick={() => goToPage("about")}>
+              About
             </button>
           </div>
           <div>

@@ -1,0 +1,300 @@
+/**
+ * Super Kicks — Premium UI layer
+ * Extends index.css tokens (Apple / Nike inspired minimal luxury)
+ */
+
+:root {
+  --space-xs: 0.25rem;
+  --space-sm: 0.5rem;
+  --space-md: 1rem;
+  --space-lg: 1.5rem;
+  --space-xl: 2rem;
+  --space-2xl: 3rem;
+  --space-3xl: 4rem;
+
+  --text-display: clamp(2.25rem, 5vw, 3.5rem);
+  --text-h1: clamp(1.75rem, 3vw, 2.5rem);
+  --text-h2: clamp(1.35rem, 2.5vw, 1.85rem);
+  --text-h3: 1.15rem;
+  --text-body: 1rem;
+  --text-sm: 0.875rem;
+  --text-xs: 0.75rem;
+
+  --shadow-sm: 0 2px 8px rgba(42, 34, 25, 0.06);
+  --shadow-md: 0 12px 40px rgba(42, 34, 25, 0.08);
+  --shadow-lg: 0 24px 64px rgba(42, 34, 25, 0.12);
+  --shadow-glow: 0 0 0 1px rgba(184, 137, 90, 0.15), 0 20px 50px rgba(184, 137, 90, 0.18);
+
+  --glass: rgba(255, 253, 248, 0.72);
+  --glass-border: rgba(255, 255, 255, 0.6);
+  --ease-out: cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+/* Typography hierarchy */
+.section-head h2,
+.page-head h2 {
+  font-size: var(--text-h2);
+  font-family: var(--font-display);
+  font-weight: 600;
+  letter-spacing: -0.03em;
+  line-height: 1.15;
+}
+
+.eyebrow {
+  letter-spacing: 0.14em;
+}
+
+/* Glass header */
+.header {
+  background: var(--glass);
+  backdrop-filter: blur(20px) saturate(1.2);
+  -webkit-backdrop-filter: blur(20px) saturate(1.2);
+  border-bottom: 1px solid var(--glass-border);
+  transition: transform 0.45s var(--ease-out), box-shadow 0.35s var(--ease-out);
+}
+
+.header--scrolled {
+  box-shadow: var(--shadow-sm);
+}
+
+.header--hidden {
+  transform: translateY(-100%);
+}
+
+/* Premium product card */
+.product-card-premium {
+  border-radius: calc(var(--radius) + 4px);
+  box-shadow: var(--shadow-sm);
+  transition: box-shadow 0.4s var(--ease-out);
+}
+
+.product-card-premium:hover {
+  box-shadow: var(--shadow-glow);
+}
+
+.product-card-premium .product-media {
+  background: #ebe8e4;
+}
+
+.product-card-premium .product-media img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.product-quick-actions {
+  position: absolute;
+  bottom: 1rem;
+  left: 1rem;
+  right: 1rem;
+  display: flex;
+  gap: 0.5rem;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.25s;
+}
+
+.product-card-premium:hover .product-quick-actions {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.quick-action-btn {
+  flex: 1;
+  padding: 0.55rem 0.75rem;
+  border: none;
+  border-radius: 999px;
+  font-size: 0.8rem;
+  font-weight: 700;
+  cursor: pointer;
+  background: rgba(255, 255, 255, 0.92);
+  backdrop-filter: blur(8px);
+  color: var(--text);
+}
+
+.quick-action-primary {
+  background: var(--text);
+  color: #fff8f0;
+}
+
+/* Skeleton loaders */
+@keyframes shimmer {
+  0% { background-position: -200% 0; }
+  100% { background-position: 200% 0; }
+}
+
+.skeleton-block,
+.skeleton-line {
+  background: linear-gradient(
+    90deg,
+    #ebe8e4 0%,
+    #f5f2ed 50%,
+    #ebe8e4 100%
+  );
+  background-size: 200% 100%;
+  animation: shimmer 1.4s ease infinite;
+  border-radius: 8px;
+}
+
+.skeleton-media {
+  aspect-ratio: 4 / 5;
+  width: 100%;
+}
+
+.skeleton-line {
+  height: 12px;
+  margin-bottom: 0.65rem;
+}
+
+.skeleton-sm { width: 35%; height: 10px; }
+.skeleton-lg { width: 85%; height: 18px; }
+.skeleton-md { width: 60%; }
+.skeleton-btn { width: 100%; height: 44px; margin-top: 0.5rem; border-radius: 999px; }
+
+.product-card-skeleton {
+  pointer-events: none;
+}
+
+/* Cart badge animation */
+.cart-badge-wrap {
+  position: relative;
+  display: inline-flex;
+  margin-left: 0.35rem;
+}
+
+.cart-trigger {
+  position: relative;
+}
+
+.cart-badge {
+  position: absolute;
+  top: -6px;
+  right: -8px;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 5px;
+  border-radius: 999px;
+  background: var(--text);
+  color: #fff8f0;
+  font-size: 0.65rem;
+  font-weight: 800;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  line-height: 1;
+}
+
+.cart-trigger span:not(.cart-badge) {
+  display: none;
+}
+
+/* Sticky add to cart — product detail */
+.pdp-sticky-bar {
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  z-index: 25;
+  padding: var(--space-md) var(--space-lg);
+  background: var(--glass);
+  backdrop-filter: blur(20px) saturate(1.15);
+  -webkit-backdrop-filter: blur(20px) saturate(1.15);
+  border-top: 1px solid var(--glass-border);
+  box-shadow: 0 -8px 32px rgba(42, 34, 25, 0.08);
+  display: none;
+}
+
+.pdp-sticky-inner {
+  max-width: 640px;
+  margin: 0 auto;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-md);
+}
+
+.pdp-sticky-price {
+  font-size: 1.25rem;
+  font-weight: 700;
+}
+
+.pdp-sticky-size {
+  font-size: var(--text-sm);
+  color: var(--muted);
+}
+
+@media (max-width: 900px) {
+  .pdp-sticky-bar {
+    display: block;
+  }
+
+  .pdp-page {
+    padding-bottom: 5.5rem;
+  }
+}
+
+/* Tab content fade */
+.pdp-tab-panel-inner {
+  min-height: 120px;
+}
+
+/* Motion toast override */
+.toast-motion {
+  position: fixed;
+  bottom: 2rem;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 100;
+  background: var(--text);
+  color: #fff8f0;
+  padding: 0.9rem 1.5rem;
+  border-radius: 999px;
+  font-weight: 600;
+  font-size: var(--text-sm);
+  box-shadow: var(--shadow-lg);
+}
+
+/* Refined buttons */
+.btn-primary {
+  position: relative;
+  overflow: hidden;
+}
+
+.btn-primary::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(circle at var(--x, 50%) var(--y, 50%), rgba(255,255,255,0.35), transparent 55%);
+  opacity: 0;
+  transition: opacity 0.3s;
+  pointer-events: none;
+}
+
+.btn-primary:hover::after {
+  opacity: 1;
+}
+
+.glass-card {
+  background: var(--glass);
+  backdrop-filter: blur(16px) saturate(1.15);
+  -webkit-backdrop-filter: blur(16px) saturate(1.15);
+  border: 1px solid var(--glass-border);
+  box-shadow: var(--shadow-sm);
+}
+
+/* Hero subtle fade */
+.hero-premium {
+  animation: fadeUp 0.8s var(--ease-out) both;
+}
+
+@keyframes fadeUp {
+  from {
+    opacity: 0;
+    transform: translateY(20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
