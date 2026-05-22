@@ -1,7 +1,13 @@
 import { useAuth } from "../context/AuthContext";
 import { useCart } from "../context/CartContext";
 
-export default function ProfilePage({ onBack, onGoOrders, onLogout }) {
+export default function ProfilePage({
+  onBack,
+  onGoOrders,
+  onGoAdmin,
+  onLogout,
+  isAdmin,
+}) {
   const { user } = useAuth();
   const { cartCount } = useCart();
 
@@ -28,7 +34,12 @@ export default function ProfilePage({ onBack, onGoOrders, onLogout }) {
           </p>
         </div>
         <div className="profile-actions">
-          <button type="button" className="btn-primary" onClick={onGoOrders}>
+          {isAdmin && (
+            <button type="button" className="btn-primary" onClick={onGoAdmin}>
+              Admin dashboard
+            </button>
+          )}
+          <button type="button" className="btn-ghost" onClick={onGoOrders}>
             Track orders
           </button>
           <button type="button" className="btn-ghost" onClick={onLogout}>

@@ -7,6 +7,7 @@ import cartRoutes from "./cart.routes.js";
 import contentRoutes from "./content.routes.js";
 import newsletterRoutes from "./newsletter.routes.js";
 import adminRoutes from "./admin.routes.js";
+import paymentRoutes from "./payment.routes.js";
 
 const router = Router();
 
@@ -18,8 +19,18 @@ router.get("/test", (req, res) => {
 });
 
 router.get("/health", (req, res) => {
-  console.log("[HIT] GET /api/health");
-  res.json({ ok: true, service: "dripkart-api", version: "1.0.0" });
+  const mongoose = req.app.locals.mongoose;
+  const dbState = mongoose?.connection?.readyState;
+  const dbStatus =
+    dbState === 1 ? "connected" : dbState === 2 ? "connecting" : "disconnected";
+
+  res.json({
+    ok: true,
+    service: "dripkart-api",
+    version: "1.0.0",
+    database: dbStatus,
+    uptime: Math.floor(process.uptime()),
+  });
 });
 
 router.use("/auth", authRoutes);
@@ -31,5 +42,6 @@ router.use("/cart", cartRoutes);
 router.use("/content", contentRoutes);
 router.use("/newsletter", newsletterRoutes);
 router.use("/admin", adminRoutes);
+router.use("/payments", paymentRoutes);
 
 export default router;

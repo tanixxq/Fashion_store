@@ -1,11 +1,14 @@
 import { useEffect, useState } from "react";
 import { useAuth } from "../context/AuthContext";
+import { useRazorpayCheckout } from "../hooks/useRazorpayCheckout";
+import LoadingSpinner from "../components/ui/LoadingSpinner";
+import ErrorMessage from "../components/ui/ErrorMessage";
 import { generateOrderId } from "../utils/storage";
 
 const PAYMENT_METHODS = [
-  { id: "upi", label: "UPI", hint: "GPay, PhonePe, Paytm" },
-  { id: "card", label: "Credit / Debit Card", hint: "Visa, Mastercard, RuPay" },
+  { id: "razorpay", label: "Razorpay", hint: "UPI, cards, wallets (recommended)" },
   { id: "cod", label: "Cash on Delivery", hint: "Pay when you receive" },
+  { id: "upi", label: "Manual UPI", hint: "Pay via UPI ID (demo)" },
 ];
 
 export default function CheckoutPage({
@@ -15,7 +18,9 @@ export default function CheckoutPage({
   onPlaceOrder,
 }) {
   const { user } = useAuth();
-  const [payment, setPayment] = useState("upi");
+  const { config: payConfig, paying, pay } = useRazorpayCheckout();
+  const [payment, setPayment] = useState("razorpay");
+  const [checkoutError, setCheckoutError] = useState("");
   const [form, setForm] = useState({
     name: "",
     email: "",
@@ -37,20 +42,36 @@ export default function CheckoutPage({
   const update = (field) => (e) =>
     setForm((prev) => ({ ...prev, [field]: e.target.value }));
 
-  const handleSubmit = (e) => {
+  const buildOrder = (paymentMeta = {}) => ({
+    id: generateOrderId(),
+    date: new Date().toISOString(),
+    items: cart,
+    total: cartTotal,
+    payment: { method: payment, ...paymentMeta },
+    shipping: form,
+    status: "placed",
+  });
+
+  const handleSubmit = async (e) => {
     e.preventDefault();
     if (cart.length === 0) return;
+    setCheckoutError("");
 
-    const order = {
-      id: generateOrderId(),
-      date: new Date().toISOString(),
-      items: cart,
-      total: cartTotal,
-      payment,
-      shipping: form,
-      status: "placed",
-    };
-    onPlaceOrder(order);
+    try {
+      if (payment === "razorpay") {
+        await pay({
+          amount: cartTotal,
+          user,
+          onSuccess: (meta) => onPlaceOrder(buildOrder(meta)),
+          onError: (err) => setCheckoutError(err.message || "Payment failed"),
+        });
+        return;
+      }
+
+      onPlaceOrder(buildOrder());
+    } catch (err) {
+      setCheckoutError(err.message || "Checkout failed");
+    }
   };
 
   if (cart.length === 0) {
@@ -76,6 +97,10 @@ export default function CheckoutPage({
         <form className="checkout-form page-card" onSubmit={handleSubmit}>
           <span className="eyebrow">Secure Checkout</span>
           <h2>Payment & Delivery</h2>
+          <ErrorMessage message={checkoutError} />
+          {!payConfig.razorpayEnabled && payment === "razorpay" && (
+            <p className="checkout-hint">Razorpay mock mode — add keys in backend .env for live payments.</p>
+          )}
 
           <fieldset>
             <legend>Contact</legend>
@@ -162,9 +187,10 @@ export default function CheckoutPage({
             )}
           </fieldset>
 
-          <button type="submit" className="btn-primary full pay-btn">
-            Pay ₹{cartTotal} & Place Order
+          <button type="submit" className="btn-primary full pay-btn" disabled={paying}>
+            {paying ? "Processing…" : `Pay ₹${cartTotal} & Place Order`}
           </button>
+          {paying && <LoadingSpinner label="Opening payment…" className="checkout-spinner" />}
         </form>
 
         <aside className="checkout-summary page-card">

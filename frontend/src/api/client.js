@@ -1,6 +1,7 @@
 /** Base URL: .env VITE_API_URL or Vite proxy /api → backend (see vite.config.js) */
-const API_BASE = import.meta.env.VITE_API_URL || "/api";
-const DEBUG_API = import.meta.env.DEV;
+import { API_BASE, IS_DEV } from "../config/env.js";
+
+const DEBUG_API = IS_DEV;
 
 function getToken() {
   try {
@@ -181,6 +182,24 @@ export async function updateCartLine(lineId, qty) {
 /** DELETE /api/cart/:lineId */
 export async function removeCartLine(lineId) {
   return apiFetch(`/cart/${encodeURIComponent(lineId)}`, { method: "DELETE" });
+}
+
+export async function fetchPaymentConfig() {
+  return apiFetch("/payments/config");
+}
+
+export async function createRazorpayOrder(amount) {
+  return apiFetch("/payments/razorpay/create-order", {
+    method: "POST",
+    body: JSON.stringify({ amount }),
+  });
+}
+
+export async function verifyRazorpayPayment(payload) {
+  return apiFetch("/payments/razorpay/verify", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
 }
 
 export async function syncUserData({ cart, wishlist, favouriteOutfits }) {

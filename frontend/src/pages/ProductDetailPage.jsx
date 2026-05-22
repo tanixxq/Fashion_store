@@ -10,6 +10,7 @@ import {
 import { useCart } from "../context/CartContext";
 import AnimatedButton from "../components/ui/AnimatedButton";
 import ProductCard from "../components/ui/ProductCard";
+import { getProductImages, getStockLabel } from "../utils/productGallery";
 
 const ease = [0.22, 1, 0.36, 1];
 
@@ -57,12 +58,14 @@ export default function ProductDetailPage({
   const [size, setSize] = useState("");
   const [activeTab, setActiveTab] = useState("description");
   const [qty, setQty] = useState(1);
+  const [activeImage, setActiveImage] = useState(0);
 
   useEffect(() => {
     let cancelled = false;
     setActiveTab("description");
     setQty(1);
     setSize("");
+    setActiveImage(0);
 
     async function load() {
       setLoading(true);
@@ -117,10 +120,13 @@ export default function ProductDetailPage({
   const chartKey = categorySizeChartMap[product.category];
   const chart = chartKey ? sizeCharts[chartKey] : null;
   const delivery = getDeliveryInfo(product.category);
+  const gallery = getProductImages(product);
+  const stock = getStockLabel(product);
+  const displayImage = gallery[activeImage] || product.image;
 
   const handleAdd = () => {
+    if (!stock.available) return;
     addToCart(product, activeSize, qty);
-    onGoCart?.();
   };
 
   return (
@@ -144,12 +150,12 @@ export default function ProductDetailPage({
       </motion.header>
 
       <div className="pdp-split">
-        <section className="pdp-gallery" aria-label="Product image">
+        <section className="pdp-gallery" aria-label="Product images">
           <div className="pdp-gallery-inner">
             <AnimatePresence mode="wait">
               <motion.img
-                key={product.image}
-                src={product.image}
+                key={displayImage}
+                src={displayImage}
                 alt={product.name}
                 initial={{ opacity: 0, scale: 1.04 }}
                 animate={{ opacity: 1, scale: 1 }}
@@ -168,6 +174,20 @@ export default function ProductDetailPage({
               </motion.span>
             )}
           </div>
+          {gallery.length > 1 && (
+            <div className="pdp-thumbs">
+              {gallery.map((src, i) => (
+                <button
+                  key={src}
+                  type="button"
+                  className={`pdp-thumb ${i === activeImage ? "active" : ""}`}
+                  onClick={() => setActiveImage(i)}
+                >
+                  <img src={src} alt="" />
+                </button>
+              ))}
+            </div>
+          )}
         </section>
 
         <motion.section
@@ -176,13 +196,17 @@ export default function ProductDetailPage({
           animate={{ opacity: 1, x: 0 }}
           transition={{ duration: 0.5, ease, delay: 0.1 }}
         >
-          <span className="product-cat">{product.category}</span>
+          <span className="product-cat">{product.brand || product.category}</span>
           <h1>{product.name}</h1>
 
           <div className="pdp-rating-row">
             <span className="pdp-stars">⭐ {product.rating ?? 4.5}</span>
             <span className="pdp-reviews">128 reviews</span>
-            <span className="pdp-stock">In stock</span>
+            <span
+              className={`pdp-stock ${!stock.available ? "pdp-stock--out" : stock.text.includes("Only") ? "pdp-stock--low" : ""}`}
+            >
+              {stock.text}
+            </span>
           </div>
 
           <div className="pdp-price-block">
@@ -244,7 +268,12 @@ export default function ProductDetailPage({
           </div>
 
           <div className="pdp-actions pdp-actions-desktop">
-            <AnimatedButton className="btn-primary pdp-add-btn" full onClick={handleAdd}>
+            <AnimatedButton
+              className="btn-primary pdp-add-btn"
+              full
+              onClick={handleAdd}
+              disabled={!stock.available}
+            >
               Add to Cart — {activeSize}
             </AnimatedButton>
             <AnimatedButton

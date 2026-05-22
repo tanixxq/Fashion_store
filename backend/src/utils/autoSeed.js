@@ -22,13 +22,17 @@ export async function ensureSeeded() {
   const adminEmail = (process.env.ADMIN_EMAIL || "admin@dripkart.com").toLowerCase();
   const existingAdmin = await User.findOne({ email: adminEmail });
   if (!existingAdmin) {
-    const password = process.env.ADMIN_PASSWORD || "admin123";
-    await User.create({
-      name: "DripKart Admin",
-      email: adminEmail,
-      password: await bcrypt.hash(password, 10),
-      role: "admin",
-    });
-    console.log(`Admin user created: ${adminEmail}`);
+    try {
+      const password = process.env.ADMIN_PASSWORD || "admin123";
+      await User.create({
+        name: "DripKart Admin",
+        email: adminEmail,
+        password: await bcrypt.hash(password, 10),
+        role: "admin",
+      });
+      console.log(`Admin user created: ${adminEmail}`);
+    } catch (err) {
+      if (err.code !== 11000) throw err;
+    }
   }
 }

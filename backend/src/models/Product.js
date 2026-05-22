@@ -22,6 +22,10 @@ const productSchema = new mongoose.Schema(
     legacyId: { type: Number, unique: true, sparse: true },
     rating: { type: Number, default: 4.5 },
     badge: { type: String },
+    brand: { type: String, trim: true, index: true },
+    images: [{ type: String }],
+    stock: { type: Number, default: 50, min: 0 },
+    inStock: { type: Boolean, default: true },
   },
   { timestamps: true }
 );

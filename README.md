@@ -81,7 +81,24 @@ Use the JWT from `POST /api/auth/login` for admin endpoints (`/api/admin/*`). Se
 
 ## 📖 Documentation
 
+- [Production roadmap & deployment](docs/PRODUCTION.md)
 - [Backend API reference](backend/README.md)
+
+### Cart drawer
+
+Click **Bag** in the navbar to open the slide-out cart (add to cart opens it automatically). Full page at `/cart`.
+
+### Admin dashboard
+
+Login: `admin@dripkart.com` / `admin123` → Profile → **Admin dashboard** or visit `/admin`  
+Analytics charts, order management, product CRUD, user list.
+
+See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for cart/admin structure.  
+**Deploy:** [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) (Render + Vercel + Atlas step-by-step) · **Env:** `frontend/src/config/env.js`
+
+### Payments (Razorpay)
+
+Add `RAZORPAY_KEY_ID` and `RAZORPAY_KEY_SECRET` to `backend/.env`. Without keys, checkout uses **mock** Razorpay for development.
 
 ## 👨‍💻 Author
 
