@@ -48,7 +48,7 @@ npm run install:all
 cd backend
 cp .env.example .env    # set MONGODB_URI if needed
 npm run seed            # optional — auto-seeds on first start
-npm run dev             # http://localhost:5000
+npm run dev             # http://localhost:5001 (see backend/.env PORT)
 ```
 
 ### 3. Frontend (new terminal)
@@ -64,7 +64,10 @@ npm run dev:backend     # terminal 1
 npm run dev:frontend    # terminal 2
 ```
 
-The Vite dev server proxies `/api` → `http://localhost:5000`.  
+The frontend calls `http://localhost:5001/api` (see `frontend/.env`).  
+Vite also proxies `/api` → the backend port in `vite.config.js`.  
+On macOS, **do not use port 5000** for the API — AirPlay often returns **403 Forbidden**.
+
 If the API is offline, the storefront falls back to built-in static data.
 
 ### Admin access

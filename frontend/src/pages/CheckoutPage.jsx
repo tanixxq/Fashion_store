@@ -1,4 +1,5 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import { useAuth } from "../context/AuthContext";
 import { generateOrderId } from "../utils/storage";
 
 const PAYMENT_METHODS = [
@@ -13,6 +14,7 @@ export default function CheckoutPage({
   onBack,
   onPlaceOrder,
 }) {
+  const { user } = useAuth();
   const [payment, setPayment] = useState("upi");
   const [form, setForm] = useState({
     name: "",
@@ -22,6 +24,15 @@ export default function CheckoutPage({
     city: "",
     pincode: "",
   });
+
+  useEffect(() => {
+    if (!user) return;
+    setForm((prev) => ({
+      ...prev,
+      name: prev.name || user.name || "",
+      email: prev.email || user.email || "",
+    }));
+  }, [user]);
 
   const update = (field) => (e) =>
     setForm((prev) => ({ ...prev, [field]: e.target.value }));

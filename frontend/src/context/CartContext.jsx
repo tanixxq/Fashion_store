@@ -1,11 +1,44 @@
-import { createContext, useContext, useEffect, useMemo, useState } from "react";
+import {
+  createContext,
+  useCallback,
+  useContext,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
+import {
+  fetchCart,
+  removeCartLine,
+  replaceCart,
+  updateCartLine,
+} from "../api/client";
+import { useAuth } from "./AuthContext";
+import { mergeCartLines } from "../utils/cartMerge";
 import { loadJson, saveJson } from "../utils/storage";
 
 const CartContext = createContext(null);
 
+function buildLine(product, size, qty = 1) {
+  const cartLineId = size ? `${product.id}-${size}` : String(product.id);
+  const displayName = size ? `${product.name} · Size ${size}` : product.name;
+  return {
+    ...product,
+    id: cartLineId,
+    productId: product.id,
+    name: displayName,
+    size: size || null,
+    qty,
+  };
+}
+
 export function CartProvider({ children }) {
+  const { user, isAuthenticated, useApi } = useAuth();
   const [cart, setCart] = useState(() => loadJson("dripkart_cart", []));
   const [toast, setToast] = useState(null);
+  const [syncing, setSyncing] = useState(false);
+  const skipNextSync = useRef(false);
+  const mergedForUser = useRef(null);
 
   useEffect(() => {
     saveJson("dripkart_cart", cart);
@@ -26,30 +59,68 @@ export function CartProvider({ children }) {
     [cart]
   );
 
-  const addToCart = (product, size) => {
-    const cartLineId = size ? `${product.id}-${size}` : String(product.id);
-    const displayName = size ? `${product.name} · Size ${size}` : product.name;
+  const loadServerCart = useCallback(async () => {
+    if (!useApi || !isAuthenticated) return;
+    try {
+      const { cart: serverCart } = await fetchCart();
+      skipNextSync.current = true;
+      setCart((prev) => mergeCartLines(prev, serverCart));
+    } catch {
+      /* keep local cart */
+    }
+  }, [useApi, isAuthenticated]);
+
+  useEffect(() => {
+    if (!isAuthenticated || !user?.email) {
+      mergedForUser.current = null;
+      return;
+    }
+    if (mergedForUser.current === user.email) return;
+    mergedForUser.current = user.email;
+    loadServerCart();
+  }, [isAuthenticated, user?.email, loadServerCart]);
+
+  useEffect(() => {
+    if (!useApi || !isAuthenticated) return undefined;
+    if (skipNextSync.current) {
+      skipNextSync.current = false;
+      return undefined;
+    }
+
+    const timer = setTimeout(async () => {
+      setSyncing(true);
+      try {
+        await replaceCart(cart);
+      } catch {
+        /* offline — local cart still works */
+      } finally {
+        setSyncing(false);
+      }
+    }, 800);
+
+    return () => clearTimeout(timer);
+  }, [cart, useApi, isAuthenticated]);
+
+  const applySessionCart = useCallback((serverCart = []) => {
+    if (!serverCart?.length) return;
+    skipNextSync.current = true;
+    setCart((prev) => mergeCartLines(prev, serverCart));
+  }, []);
+
+  const addToCart = (product, size, qty = 1) => {
+    const line = buildLine(product, size, qty);
+    const amount = Math.max(1, Number(qty) || 1);
 
     setCart((prev) => {
-      const existing = prev.find((item) => item.id === cartLineId);
+      const existing = prev.find((item) => item.id === line.id);
       if (existing) {
         return prev.map((item) =>
-          item.id === cartLineId ? { ...item, qty: item.qty + 1 } : item
+          item.id === line.id ? { ...item, qty: item.qty + amount } : item
         );
       }
-      return [
-        ...prev,
-        {
-          ...product,
-          id: cartLineId,
-          productId: product.id,
-          name: displayName,
-          size: size || null,
-          qty: 1,
-        },
-      ];
+      return [...prev, { ...line, qty: amount }];
     });
-    showToast(`${displayName} added to cart`);
+    showToast(`${line.name} added to cart`);
   };
 
   const addOutfitToCart = (outfit, size) => {
@@ -73,22 +144,44 @@ export function CartProvider({ children }) {
     showToast(`"${outfit.name}" added to cart`);
   };
 
-  const updateCartQty = (id, delta) => {
-    setCart((prev) =>
-      prev
+  const updateCartQty = async (id, delta) => {
+    setCart((prev) => {
+      const next = prev
         .map((item) =>
           item.id === id ? { ...item, qty: Math.max(0, item.qty + delta) } : item
         )
-        .filter((item) => item.qty > 0)
-    );
+        .filter((item) => item.qty > 0);
+      return next;
+    });
+
+    if (useApi && isAuthenticated) {
+      const item = cart.find((i) => i.id === id);
+      const newQty = Math.max(0, (item?.qty || 0) + delta);
+      try {
+        if (newQty < 1) await removeCartLine(id);
+        else await updateCartLine(id, newQty);
+      } catch {
+        /* debounced PUT will reconcile */
+      }
+    }
   };
 
-  const removeFromCart = (id) => {
+  const removeFromCart = async (id) => {
     setCart((prev) => prev.filter((item) => item.id !== id));
     showToast("Removed from cart");
+    if (useApi && isAuthenticated) {
+      try {
+        await removeCartLine(id);
+      } catch {
+        /* debounced sync */
+      }
+    }
   };
 
-  const clearCart = () => setCart([]);
+  const clearCart = () => {
+    skipNextSync.current = true;
+    setCart([]);
+  };
 
   const value = {
     cart,
@@ -100,6 +193,9 @@ export function CartProvider({ children }) {
     updateCartQty,
     removeFromCart,
     clearCart,
+    applySessionCart,
+    loadServerCart,
+    syncing,
     toast,
     showToast,
   };

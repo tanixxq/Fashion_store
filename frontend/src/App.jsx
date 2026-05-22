@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { useLocation, useNavigate } from "react-router-dom";
 import { AnimatePresence, motion } from "framer-motion";
 import QuickActions from "./components/QuickActions";
 import InfoModal from "./components/InfoModal";
@@ -27,10 +28,8 @@ import {
   checkApiHealth,
   createOrder,
   fetchContent,
-  fetchMe,
   fetchMyOrders,
   fetchOutfits,
-  setToken,
   subscribeNewsletter,
   syncUserData,
   trackOrder,
@@ -49,7 +48,14 @@ import {
 import CheckoutPage from "./pages/CheckoutPage";
 import FavouritesPage from "./pages/FavouritesPage";
 import TrackOrderPage from "./pages/TrackOrderPage";
+import ProfilePage from "./pages/ProfilePage";
 import { loadJson, saveJson } from "./utils/storage";
+import {
+  PATHS,
+  pageToPath,
+  pathToPage,
+  productIdFromPath,
+} from "./navigation";
 
 const menuHighlights = [
   "New Arrivals",
@@ -60,14 +66,16 @@ const menuHighlights = [
 const supportLinks = ["Track Order", "Size Guide", "Returns", "Help Desk"];
 
 function App() {
-  const [page, setPage] = useState("home");
+  const navigate = useNavigate();
+  const location = useLocation();
+  const page = pathToPage(location.pathname);
+  const detailProductId = productIdFromPath(location.pathname);
   const [highlightOrderId, setHighlightOrderId] = useState("");
   const [selectedCategory, setSelectedCategory] = useState("All Categories");
   const [searchQuery, setSearchQuery] = useState("");
   const [sortBy, setSortBy] = useState("featured");
   const {
     cart,
-    setCart,
     cartCount,
     cartTotal,
     addToCart,
@@ -75,10 +83,11 @@ function App() {
     updateCartQty,
     removeFromCart,
     clearCart,
+    applySessionCart,
     toast,
     showToast,
   } = useCart();
-  const { user, setUser, logout, syncUserData } = useAuth();
+  const { user, logout, refreshSession, syncUserData } = useAuth();
 
   const [wishlist, setWishlist] = useState(() =>
     loadJson("dripkart_favourites_products", [])
@@ -89,7 +98,6 @@ function App() {
   const [orders, setOrders] = useState(() => loadJson("dripkart_orders", []));
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [newsletterEmail, setNewsletterEmail] = useState("");
-  const [detailProductId, setDetailProductId] = useState(null);
   const [outfitFilter, setOutfitFilter] = useState("All Sets");
   const [selectedOutfit, setSelectedOutfit] = useState(null);
   const [outfitSizes, setOutfitSizes] = useState({});
@@ -128,19 +136,19 @@ function App() {
         setCatalogOutfits(outfitRes.outfits);
         setStoreContent(contentRes);
 
-        const token = localStorage.getItem("dripkart_token");
-        if (token) {
-          const { user: sessionUser } = await fetchMe();
-          if (!cancelled && sessionUser) {
-            setUser({ name: sessionUser.name, email: sessionUser.email, role: sessionUser.role });
-            if (sessionUser.cart?.length) setCart(sessionUser.cart);
-            if (sessionUser.wishlist?.length) setWishlist(sessionUser.wishlist);
-            if (sessionUser.favouriteOutfits?.length) {
-              setFavouriteOutfits(sessionUser.favouriteOutfits);
-            }
+        const session = await refreshSession();
+        if (!cancelled && session) {
+          applySessionCart(session.cart);
+          if (session.wishlist?.length) setWishlist(session.wishlist);
+          if (session.favouriteOutfits?.length) {
+            setFavouriteOutfits(session.favouriteOutfits);
           }
-          const { orders: serverOrders } = await fetchMyOrders();
-          if (!cancelled && serverOrders?.length) setOrders(serverOrders);
+          try {
+            const { orders: serverOrders } = await fetchMyOrders();
+            if (!cancelled && serverOrders?.length) setOrders(serverOrders);
+          } catch {
+            /* orders stay local */
+          }
         }
       } catch {
         /* outfits/content stay on static fallback */
@@ -167,7 +175,7 @@ function App() {
         block: "start",
       });
     if (page !== "home") {
-      setPage("home");
+      navigate(PATHS.home);
       setTimeout(run, delay);
     } else {
       run();
@@ -175,31 +183,41 @@ function App() {
   };
 
   const goHome = () => {
-    setPage("home");
-    setDetailProductId(null);
+    navigate(PATHS.home);
     window.scrollTo({ top: 0, behavior: "smooth" });
   };
 
   const goToPage = (next) => {
-    setPage(next);
+    navigate(pageToPath(next));
     setIsMenuOpen(false);
     window.scrollTo({ top: 0, behavior: "smooth" });
   };
 
   const goCheckout = () => {
     if (!user) {
-      setPage("login");
+      navigate(PATHS.login, {
+        state: { from: PATHS.checkout, message: "Please sign in to checkout." },
+      });
       showToast("Please sign in to checkout");
       return;
     }
-    setPage("checkout");
+    navigate(PATHS.checkout);
     window.scrollTo({ top: 0, behavior: "smooth" });
   };
 
   const openProductDetail = (productId) => {
-    setDetailProductId(productId);
-    setPage("product-detail");
+    navigate(PATHS.product(productId));
     window.scrollTo({ top: 0, behavior: "auto" });
+  };
+
+  const handleAuthSuccess = (res) => {
+    if (res?.session) {
+      applySessionCart(res.session.cart);
+      if (res.session.wishlist?.length) setWishlist(res.session.wishlist);
+      if (res.session.favouriteOutfits?.length) {
+        setFavouriteOutfits(res.session.favouriteOutfits);
+      }
+    }
   };
 
   const handleOutfitAddToCart = (outfit) => {
@@ -247,7 +265,7 @@ function App() {
       setOrders((prev) => [saved, ...prev]);
       clearCart();
       setHighlightOrderId(saved.id);
-      setPage("track");
+      navigate(PATHS.track);
       showToast(`Order ${saved.id} placed successfully!`);
       window.scrollTo({ top: 0, behavior: "smooth" });
     } catch (err) {
@@ -259,16 +277,17 @@ function App() {
 
   const handleLogout = () => {
     logout();
+    navigate(PATHS.home);
     showToast("You have been logged out.");
   };
 
   useEffect(() => {
     if (!useApi || !user) return undefined;
     const timer = setTimeout(() => {
-      syncUserData({ cart, wishlist, favouriteOutfits }).catch(() => {});
+      syncUserData({ wishlist, favouriteOutfits }).catch(() => {});
     }, 900);
     return () => clearTimeout(timer);
-  }, [cart, wishlist, favouriteOutfits, user, useApi]);
+  }, [wishlist, favouriteOutfits, user, useApi]);
 
   const displayStats = useMemo(() => {
     if (storeContent?.stats) return storeContent.stats;
@@ -375,7 +394,7 @@ function App() {
 
   const handleShopSale = () => {
     setCatalogFilter("hot");
-    setPage("home");
+    navigate(PATHS.home);
     setTimeout(() => scrollToSection("trending", 0), 80);
     showToast("FLASH20 applied to hot picks");
   };
@@ -554,8 +573,15 @@ function App() {
           <div className="header-aside">
             {user ? (
               <div className="user-menu">
-                <span className="user-avatar">{user.name.charAt(0).toUpperCase()}</span>
-                <span className="user-name">Hi, {user.name.split(" ")[0]}</span>
+                <button
+                  type="button"
+                  className="user-menu-btn"
+                  onClick={() => navigate(PATHS.profile)}
+                  title="Your profile"
+                >
+                  <span className="user-avatar">{user.name.charAt(0).toUpperCase()}</span>
+                  <span className="user-name">Hi, {user.name.split(" ")[0]}</span>
+                </button>
                 <button type="button" className="nav-btn logout-btn" onClick={handleLogout}>
                   Logout
                 </button>
@@ -588,10 +614,10 @@ function App() {
         <PageTransition key="login">
         <LoginPage
           onBack={goHome}
-          onGoSignup={() => setPage("signup")}
-          onSuccess={() => {
+          onGoSignup={() => navigate(PATHS.signup)}
+          onSuccess={(res) => {
+            handleAuthSuccess(res);
             showToast("Welcome back!");
-            setPage("home");
           }}
         />
         </PageTransition>
@@ -601,10 +627,10 @@ function App() {
         <PageTransition key="signup">
         <SignupPage
           onBack={goHome}
-          onGoLogin={() => setPage("login")}
-          onSuccess={() => {
+          onGoLogin={() => navigate(PATHS.login)}
+          onSuccess={(res) => {
+            handleAuthSuccess(res);
             showToast("Account created!");
-            setPage("home");
           }}
         />
         </PageTransition>
@@ -695,18 +721,32 @@ function App() {
 
       {page === "cart" && (
         <PageTransition key="cart">
-        <CartPage onBack={goHome} onCheckout={goCheckout} />
+        <ProtectedRoute>
+          <CartPage onBack={goHome} onCheckout={goCheckout} />
+        </ProtectedRoute>
         </PageTransition>
       )}
 
       {page === "checkout" && (
         <PageTransition key="checkout">
-        <ProtectedRoute user={user} onLogin={() => setPage("login")}>
+        <ProtectedRoute>
           <CheckoutPage
             cart={cart}
             cartTotal={cartTotal}
-            onBack={() => setPage("cart")}
+            onBack={() => navigate(PATHS.cart)}
             onPlaceOrder={placeOrder}
+          />
+        </ProtectedRoute>
+        </PageTransition>
+      )}
+
+      {page === "profile" && (
+        <PageTransition key="profile">
+        <ProtectedRoute>
+          <ProfilePage
+            onBack={goHome}
+            onGoOrders={() => navigate(PATHS.track)}
+            onLogout={handleLogout}
           />
         </ProtectedRoute>
         </PageTransition>
@@ -806,7 +846,7 @@ function App() {
               key={item.label}
               className="stat-card"
               onClick={() => {
-                if (item.label.includes("Delivery")) setPage("track");
+                if (item.label.includes("Delivery")) navigate(PATHS.track);
                 else if (item.label.includes("Rating")) {
                   setSortBy("rating");
                   scrollToSection("shop");
@@ -823,8 +863,8 @@ function App() {
         <QuickActions
           favCount={favCount}
           orderCount={orders.length}
-          onFavourites={() => setPage("favourites")}
-          onTrack={() => setPage("track")}
+          onFavourites={() => navigate(PATHS.favourites)}
+          onTrack={() => navigate(PATHS.track)}
         />
 
         <section id="inspiration" className="inspiration section">
@@ -1241,13 +1281,17 @@ function App() {
           </div>
           <div>
             <h4>Account</h4>
-            <button type="button" className="footer-link" onClick={() => setPage("login")}>
+            <button
+              type="button"
+              className="footer-link"
+              onClick={() => (user ? navigate(PATHS.profile) : navigate(PATHS.login))}
+            >
               {user ? "Account" : "Login"}
             </button>
-            <button type="button" className="footer-link" onClick={() => setPage("favourites")}>
+            <button type="button" className="footer-link" onClick={() => navigate(PATHS.favourites)}>
               Favourites
             </button>
-            <button type="button" className="footer-link" onClick={() => setPage("track")}>
+            <button type="button" className="footer-link" onClick={() => navigate(PATHS.track)}>
               Track Order
             </button>
             <button type="button" className="footer-link" onClick={goCheckout}>

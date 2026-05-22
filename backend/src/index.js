@@ -20,10 +20,22 @@ import { ensureSeeded } from "./utils/autoSeed.js";
 const app = express();
 const PORT = Number(process.env.PORT) || 5000;
 
-// CORS — React dev server can call this API
+// CORS — React dev server (Vite) can call this API directly or via proxy
+const allowedOrigins = [
+  process.env.CLIENT_ORIGIN,
+  "http://localhost:5173",
+  "http://127.0.0.1:5173",
+].filter(Boolean);
+
 app.use(
   cors({
-    origin: process.env.CLIENT_ORIGIN || "http://localhost:5173",
+    origin(origin, callback) {
+      if (!origin || allowedOrigins.includes(origin)) {
+        callback(null, true);
+      } else {
+        callback(null, allowedOrigins[0]);
+      }
+    },
     credentials: true,
   })
 );
