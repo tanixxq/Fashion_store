@@ -1,19 +1,25 @@
 import { useState } from "react";
+import { useLocation, useNavigate } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
 import Logo from "../components/Logo";
+import { PATHS } from "../navigation";
 
-/** Step 6 — Signup page → POST /api/auth/register */
 export default function SignupPage({ onBack, onGoLogin, onSuccess }) {
   const { register, loading } = useAuth();
+  const navigate = useNavigate();
+  const location = useLocation();
   const [form, setForm] = useState({ name: "", email: "", password: "" });
   const [error, setError] = useState("");
+
+  const redirectTo = location.state?.from || PATHS.home;
 
   const handleSubmit = async (e) => {
     e.preventDefault();
     setError("");
     try {
-      await register(form.name, form.email, form.password);
-      onSuccess?.();
+      const res = await register(form.name, form.email, form.password);
+      onSuccess?.(res);
+      navigate(redirectTo, { replace: true });
     } catch (err) {
       setError(err.message || "Signup failed");
     }

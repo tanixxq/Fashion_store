@@ -1,4 +1,4 @@
-import { createContext, useContext, useEffect, useState } from "react";
+import { createContext, useCallback, useContext, useEffect, useState } from "react";
 import {
   fetchMe,
   fetchMyOrders,
@@ -14,28 +14,62 @@ const AuthContext = createContext(null);
 export function AuthProvider({ children, useApi = false }) {
   const [user, setUser] = useState(() => loadJson("dripkart_user", null));
   const [loading, setLoading] = useState(false);
+  const [authReady, setAuthReady] = useState(!useApi);
 
   useEffect(() => {
     saveJson("dripkart_user", user);
   }, [user]);
 
-  useEffect(() => {
-    const token = localStorage.getItem("dripkart_token");
-    if (!useApi || !token) return;
+  const applySession = useCallback((sessionUser) => {
+    if (!sessionUser) {
+      setUser(null);
+      return null;
+    }
+    const next = {
+      name: sessionUser.name,
+      email: sessionUser.email,
+      role: sessionUser.role,
+      id: sessionUser.id,
+    };
+    setUser(next);
+    return {
+      user: next,
+      cart: sessionUser.cart || [],
+      wishlist: sessionUser.wishlist || [],
+      favouriteOutfits: sessionUser.favouriteOutfits || [],
+    };
+  }, []);
 
-    fetchMe()
-      .then(({ user: sessionUser }) => {
-        setUser({
-          name: sessionUser.name,
-          email: sessionUser.email,
-          role: sessionUser.role,
-        });
-      })
-      .catch(() => {
-        setToken(null);
-        setUser(null);
-      });
-  }, [useApi]);
+  const refreshSession = useCallback(async () => {
+    const token = localStorage.getItem("dripkart_token");
+    if (!useApi || !token) {
+      setAuthReady(true);
+      return null;
+    }
+    try {
+      const { user: sessionUser } = await fetchMe();
+      return applySession(sessionUser);
+    } catch {
+      setToken(null);
+      setUser(null);
+      return null;
+    } finally {
+      setAuthReady(true);
+    }
+  }, [useApi, applySession]);
+
+  useEffect(() => {
+    if (!useApi) {
+      setAuthReady(true);
+      return;
+    }
+    const token = localStorage.getItem("dripkart_token");
+    if (!token) {
+      setAuthReady(true);
+      return;
+    }
+    refreshSession();
+  }, [useApi, refreshSession]);
 
   const login = async (email, password) => {
     setLoading(true);
@@ -43,11 +77,11 @@ export function AuthProvider({ children, useApi = false }) {
       if (useApi) {
         const res = await loginUser(email, password);
         setToken(res.token);
-        setUser({ name: res.user.name, email: res.user.email, role: res.user.role });
-        return res;
+        return { ...res, session: applySession(res.user) };
       }
-      setUser({ name: email.split("@")[0], email });
-      return { user: { name: email.split("@")[0], email } };
+      const localUser = { name: email.split("@")[0], email };
+      setUser(localUser);
+      return { user: localUser };
     } finally {
       setLoading(false);
     }
@@ -59,11 +93,11 @@ export function AuthProvider({ children, useApi = false }) {
       if (useApi) {
         const res = await registerUser(name, email, password);
         setToken(res.token);
-        setUser({ name: res.user.name, email: res.user.email, role: res.user.role });
-        return res;
+        return { ...res, session: applySession(res.user) };
       }
-      setUser({ name: name || email.split("@")[0], email });
-      return { user: { name, email } };
+      const localUser = { name: name || email.split("@")[0], email };
+      setUser(localUser);
+      return { user: localUser };
     } finally {
       setLoading(false);
     }
@@ -80,13 +114,17 @@ export function AuthProvider({ children, useApi = false }) {
     user,
     setUser,
     loading,
+    authReady,
     login,
     register,
     logout,
     isAuthenticated,
+    applySession,
+    refreshSession,
     fetchMe,
     fetchMyOrders,
     syncUserData,
+    useApi,
   };
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

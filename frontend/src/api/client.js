@@ -1,4 +1,6 @@
+/** Base URL: .env VITE_API_URL or Vite proxy /api → backend (see vite.config.js) */
 const API_BASE = import.meta.env.VITE_API_URL || "/api";
+const DEBUG_API = import.meta.env.DEV;
 
 function getToken() {
   try {
@@ -21,15 +23,37 @@ export async function apiFetch(path, options = {}) {
   };
   if (token) headers.Authorization = `Bearer ${token}`;
 
-  const res = await fetch(`${API_BASE}${path}`, {
-    ...options,
-    headers,
-  });
+  const url = `${API_BASE}${path}`;
+  const method = options.method || "GET";
+
+  if (DEBUG_API) {
+    console.log(`[API] ${method} ${url}`);
+  }
+
+  let res;
+  try {
+    res = await fetch(url, {
+      ...options,
+      headers,
+    });
+  } catch (networkErr) {
+    console.error("[API] Network error:", networkErr.message, { url, method });
+    throw new Error(
+      `Cannot reach API at ${API_BASE}. Is the backend running on the correct port?`
+    );
+  }
 
   const data = await res.json().catch(() => ({}));
+
+  if (DEBUG_API) {
+    console.log(`[API] ${method} ${url} → ${res.status}`, data.message || data);
+  }
+
   if (!res.ok) {
     const err = new Error(data.message || `Request failed (${res.status})`);
     err.status = res.status;
+    err.data = data;
+    console.error("[API] Error:", res.status, url, data);
     throw err;
   }
   return data;
@@ -114,12 +138,55 @@ export async function subscribeNewsletter(email) {
   });
 }
 
+/** GET /api/cart */
+export async function fetchCart() {
+  return apiFetch("/cart");
+}
+
+/** POST /api/cart — add or bump qty */
+export async function addCartItem(item, qty = 1) {
+  return apiFetch("/cart", {
+    method: "POST",
+    body: JSON.stringify({ item, qty }),
+  });
+}
+
+/** PUT /api/cart — replace full cart */
+export async function replaceCart(cart) {
+  const payload = cart.map((line) => ({
+    lineId: line.id,
+    id: line.id,
+    productId: line.productId,
+    name: line.name,
+    price: line.price,
+    image: line.image,
+    qty: line.qty,
+    size: line.size,
+    isSet: line.isSet,
+  }));
+  return apiFetch("/cart", {
+    method: "PUT",
+    body: JSON.stringify({ cart: payload }),
+  });
+}
+
+/** PATCH /api/cart/:lineId */
+export async function updateCartLine(lineId, qty) {
+  return apiFetch(`/cart/${encodeURIComponent(lineId)}`, {
+    method: "PATCH",
+    body: JSON.stringify({ qty }),
+  });
+}
+
+/** DELETE /api/cart/:lineId */
+export async function removeCartLine(lineId) {
+  return apiFetch(`/cart/${encodeURIComponent(lineId)}`, { method: "DELETE" });
+}
+
 export async function syncUserData({ cart, wishlist, favouriteOutfits }) {
   const tasks = [];
   if (cart !== undefined) {
-    tasks.push(
-      apiFetch("/users/cart", { method: "PUT", body: JSON.stringify({ cart }) })
-    );
+    tasks.push(replaceCart(cart));
   }
   if (wishlist !== undefined) {
     tasks.push(

@@ -119,7 +119,7 @@ export default function ProductDetailPage({
   const delivery = getDeliveryInfo(product.category);
 
   const handleAdd = () => {
-    for (let i = 0; i < qty; i += 1) addToCart(product, activeSize);
+    addToCart(product, activeSize, qty);
     onGoCart?.();
   };
 

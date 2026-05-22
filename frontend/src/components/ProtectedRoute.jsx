@@ -1,21 +1,33 @@
+import { Navigate, useLocation } from "react-router-dom";
+import { useAuth } from "../context/AuthContext";
+import { PATHS } from "../navigation";
+
 /**
- * Step 6 — Protected route wrapper
- * If user is not logged in, show login prompt instead of children.
+ * Auth guard — redirects to login with return path.
  */
-export default function ProtectedRoute({ user, onLogin, children }) {
-  if (!user) {
+export default function ProtectedRoute({ children }) {
+  const { user, authReady } = useAuth();
+  const location = useLocation();
+
+  if (!authReady) {
     return (
       <div className="page-shell">
-        <div className="page-card empty-page auth-gate">
-          <span className="eyebrow">Members only</span>
-          <h2>Please sign in</h2>
-          <p>You need an account to access checkout and order history.</p>
-          <button type="button" className="btn-primary" onClick={onLogin}>
-            Go to Login
-          </button>
+        <div className="page-card empty-page">
+          <p>Loading…</p>
         </div>
       </div>
     );
   }
+
+  if (!user) {
+    return (
+      <Navigate
+        to={PATHS.login}
+        replace
+        state={{ from: location.pathname, message: "Please sign in to continue." }}
+      />
+    );
+  }
+
   return children;
 }
