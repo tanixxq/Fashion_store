@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { lazy, Suspense, useEffect, useMemo, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { AnimatePresence, motion } from "framer-motion";
 import QuickActions from "./components/QuickActions";
@@ -49,6 +49,16 @@ import CheckoutPage from "./pages/CheckoutPage";
 import FavouritesPage from "./pages/FavouritesPage";
 import TrackOrderPage from "./pages/TrackOrderPage";
 import ProfilePage from "./pages/ProfilePage";
+import AdminRoute from "./components/AdminRoute";
+import SEO from "./components/SEO";
+import PaymentSuccessPage from "./pages/PaymentSuccessPage";
+import PaymentFailurePage from "./pages/PaymentFailurePage";
+import LoadingSpinner from "./components/ui/LoadingSpinner";
+import { useToast } from "./context/ToastContext";
+
+const AdminDashboard = lazy(() => import("./pages/admin/AdminDashboard"));
+import CartDrawer from "./components/cart/CartDrawer";
+import HeroSection from "./components/home/HeroSection";
 import { loadJson, saveJson } from "./utils/storage";
 import {
   PATHS,
@@ -72,6 +82,7 @@ function App() {
   const detailProductId = productIdFromPath(location.pathname);
   const [highlightOrderId, setHighlightOrderId] = useState("");
   const [selectedCategory, setSelectedCategory] = useState("All Categories");
+  const [selectedBrand, setSelectedBrand] = useState("All Brands");
   const [searchQuery, setSearchQuery] = useState("");
   const [sortBy, setSortBy] = useState("featured");
   const {
@@ -84,10 +95,10 @@ function App() {
     removeFromCart,
     clearCart,
     applySessionCart,
-    toast,
-    showToast,
+    toggleDrawer,
   } = useCart();
   const { user, logout, refreshSession, syncUserData } = useAuth();
+  const { showToast, showError, showSuccess } = useToast();
 
   const [wishlist, setWishlist] = useState(() =>
     loadJson("dripkart_favourites_products", [])
@@ -265,11 +276,14 @@ function App() {
       setOrders((prev) => [saved, ...prev]);
       clearCart();
       setHighlightOrderId(saved.id);
-      navigate(PATHS.track);
-      showToast(`Order ${saved.id} placed successfully!`);
+      showSuccess(`Order ${saved.id} confirmed`);
+      navigate(PATHS.orderSuccess, { state: { order: saved } });
       window.scrollTo({ top: 0, behavior: "smooth" });
     } catch (err) {
-      showToast(err.message || "Could not place order. Try again.");
+      showError(err.message || "Could not place order");
+      navigate(PATHS.orderFailed, {
+        state: { message: err.message || "Order could not be completed" },
+      });
     }
   };
 
@@ -400,20 +414,24 @@ function App() {
   };
 
   return (
-    <div className="app">
-      <AnimatePresence>
-        {toast && (
-          <motion.div
-            className="toast-motion"
-            initial={{ opacity: 0, y: 24, scale: 0.96 }}
-            animate={{ opacity: 1, y: 0, scale: 1 }}
-            exit={{ opacity: 0, y: 12, scale: 0.96 }}
-            transition={{ type: "spring", stiffness: 400, damping: 28 }}
-          >
-            {toast}
-          </motion.div>
-        )}
-      </AnimatePresence>
+    <div className="app theme-dark min-h-screen bg-neutral-950">
+      <SEO
+        title={
+          page === "shop"
+            ? "Shop"
+            : page === "product-detail"
+              ? "Product"
+              : page === "checkout"
+                ? "Checkout"
+                : page === "cart"
+                  ? "Cart"
+                  : undefined
+        }
+      />
+      <CartDrawer
+        onCheckout={goCheckout}
+        onViewFullCart={() => goToPage("cart")}
+      />
 
       {infoModal && <InfoModal type={infoModal} onClose={() => setInfoModal(null)} />}
 
@@ -598,9 +616,10 @@ function App() {
             <motion.button
               type="button"
               className={`cart-trigger ${page === "cart" ? "active" : ""}`}
-              onClick={() => goToPage("cart")}
+              onClick={toggleDrawer}
               whileHover={{ scale: 1.03 }}
               whileTap={{ scale: 0.96 }}
+              aria-label="Open shopping bag"
             >
               Bag
               <AnimatedCartBadge count={cartCount} />
@@ -657,13 +676,17 @@ function App() {
           products={catalogProducts}
           categories={categories}
           selectedCategory={selectedCategory}
+          selectedBrand={selectedBrand}
           searchQuery={searchQuery}
           sortBy={sortBy}
           loading={productsLoading}
+          error={productsError}
           wishlist={wishlist}
           onCategoryChange={setSelectedCategory}
+          onBrandChange={setSelectedBrand}
           onSearchChange={setSearchQuery}
           onSortChange={setSortBy}
+          onRetry={() => window.location.reload()}
           onOpenProduct={openProductDetail}
           onToggleWishlist={toggleWishlist}
           onAddToCart={addToCart}
@@ -746,9 +769,33 @@ function App() {
           <ProfilePage
             onBack={goHome}
             onGoOrders={() => navigate(PATHS.track)}
+            onGoAdmin={() => navigate(PATHS.admin)}
             onLogout={handleLogout}
+            isAdmin={user?.role === "admin"}
           />
         </ProtectedRoute>
+        </PageTransition>
+      )}
+
+      {page === "admin" && (
+        <PageTransition key="admin">
+        <AdminRoute>
+          <Suspense fallback={<LoadingSpinner label="Loading admin…" />}>
+            <AdminDashboard onBack={goHome} />
+          </Suspense>
+        </AdminRoute>
+        </PageTransition>
+      )}
+
+      {page === "order-success" && (
+        <PageTransition key="order-success">
+          <PaymentSuccessPage />
+        </PageTransition>
+      )}
+
+      {page === "order-failed" && (
+        <PageTransition key="order-failed">
+          <PaymentFailurePage />
         </PageTransition>
       )}
 
@@ -791,53 +838,14 @@ function App() {
           />
         )}
 
-        <section className="hero section hero-premium">
-          <div className="hero-copy">
-            <span className="pill">Spring / Summer 2026</span>
-            <h2>
-              Elevated streetwear for people who dress with intention.
-            </h2>
-            <p>
-              Discover premium fits, trending drops, and everyday essentials —
-              built for comfort, confidence, and clean aesthetics.
-            </p>
-            <div className="hero-cta">
-              <button
-                type="button"
-                className="btn-primary"
-                onClick={() => {
-                  setCatalogFilter(null);
-                  scrollToSection("shop");
-                }}
-              >
-                Shop Collection
-              </button>
-              <button
-                type="button"
-                className="btn-ghost"
-                onClick={() => scrollToSection("outfits")}
-              >
-                Shop Full Outfits
-              </button>
-              <button
-                type="button"
-                className="btn-ghost"
-                onClick={() => scrollToSection("trending")}
-              >
-                See Trending
-              </button>
-            </div>
-          </div>
-          <div className="hero-visual">
-            <img
-              src="https://images.unsplash.com/photo-1490481651871-ab68de25d43d?auto=format&fit=crop&w=1200&q=80"
-              alt="Fashion editorial"
-            />
-            <div className="hero-quote">
-              <p>"Dress well. Feel powerful."</p>
-            </div>
-          </div>
-        </section>
+        <HeroSection
+          onShop={() => {
+            setCatalogFilter(null);
+            scrollToSection("shop");
+          }}
+          onOutfits={() => scrollToSection("outfits")}
+          onTrending={() => scrollToSection("trending")}
+        />
 
         <section className="stats section">
           {displayStats.map((item) => (

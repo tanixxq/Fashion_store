@@ -14,10 +14,14 @@ import {
   updateCartLine,
 } from "../api/client";
 import { useAuth } from "./AuthContext";
+import { useToast } from "./ToastContext";
 import { mergeCartLines } from "../utils/cartMerge";
 import { loadJson, saveJson } from "../utils/storage";
 
 const CartContext = createContext(null);
+
+const FREE_SHIPPING_MIN = 2999;
+const STANDARD_SHIPPING = 99;
 
 function buildLine(product, size, qty = 1) {
   const cartLineId = size ? `${product.id}-${size}` : String(product.id);
@@ -34,30 +38,38 @@ function buildLine(product, size, qty = 1) {
 
 export function CartProvider({ children }) {
   const { user, isAuthenticated, useApi } = useAuth();
+  const { showSuccess } = useToast();
   const [cart, setCart] = useState(() => loadJson("dripkart_cart", []));
-  const [toast, setToast] = useState(null);
   const [syncing, setSyncing] = useState(false);
+  const [isDrawerOpen, setIsDrawerOpen] = useState(false);
   const skipNextSync = useRef(false);
   const mergedForUser = useRef(null);
+
+  const openDrawer = useCallback(() => setIsDrawerOpen(true), []);
+  const closeDrawer = useCallback(() => setIsDrawerOpen(false), []);
+  const toggleDrawer = useCallback(() => setIsDrawerOpen((v) => !v), []);
 
   useEffect(() => {
     saveJson("dripkart_cart", cart);
   }, [cart]);
-
-  const showToast = (message) => {
-    setToast(message);
-    setTimeout(() => setToast(null), 2600);
-  };
 
   const cartCount = useMemo(
     () => cart.reduce((sum, item) => sum + item.qty, 0),
     [cart]
   );
 
-  const cartTotal = useMemo(
+  const cartSubtotal = useMemo(
     () => cart.reduce((sum, item) => sum + item.price * item.qty, 0),
     [cart]
   );
+
+  const shipping = useMemo(() => {
+    if (cart.length === 0) return 0;
+    return cartSubtotal >= FREE_SHIPPING_MIN ? 0 : STANDARD_SHIPPING;
+  }, [cart.length, cartSubtotal]);
+
+  const orderTotal = useMemo(() => cartSubtotal + shipping, [cartSubtotal, shipping]);
+  const cartTotal = cartSubtotal;
 
   const loadServerCart = useCallback(async () => {
     if (!useApi || !isAuthenticated) return;
@@ -92,7 +104,7 @@ export function CartProvider({ children }) {
       try {
         await replaceCart(cart);
       } catch {
-        /* offline — local cart still works */
+        /* debounced sync */
       } finally {
         setSyncing(false);
       }
@@ -108,6 +120,7 @@ export function CartProvider({ children }) {
   }, []);
 
   const addToCart = (product, size, qty = 1) => {
+    if (product.inStock === false) return;
     const line = buildLine(product, size, qty);
     const amount = Math.max(1, Number(qty) || 1);
 
@@ -120,7 +133,8 @@ export function CartProvider({ children }) {
       }
       return [...prev, { ...line, qty: amount }];
     });
-    showToast(`${line.name} added to cart`);
+    showSuccess(`${line.name} added to bag`);
+    setIsDrawerOpen(true);
   };
 
   const addOutfitToCart = (outfit, size) => {
@@ -141,18 +155,18 @@ export function CartProvider({ children }) {
       }
       return [...prev, cartItem];
     });
-    showToast(`"${outfit.name}" added to cart`);
+    showSuccess(`"${outfit.name}" added to bag`);
+    setIsDrawerOpen(true);
   };
 
   const updateCartQty = async (id, delta) => {
-    setCart((prev) => {
-      const next = prev
+    setCart((prev) =>
+      prev
         .map((item) =>
           item.id === id ? { ...item, qty: Math.max(0, item.qty + delta) } : item
         )
-        .filter((item) => item.qty > 0);
-      return next;
-    });
+        .filter((item) => item.qty > 0)
+    );
 
     if (useApi && isAuthenticated) {
       const item = cart.find((i) => i.id === id);
@@ -161,19 +175,18 @@ export function CartProvider({ children }) {
         if (newQty < 1) await removeCartLine(id);
         else await updateCartLine(id, newQty);
       } catch {
-        /* debounced PUT will reconcile */
+        /* debounced PUT */
       }
     }
   };
 
   const removeFromCart = async (id) => {
     setCart((prev) => prev.filter((item) => item.id !== id));
-    showToast("Removed from cart");
     if (useApi && isAuthenticated) {
       try {
         await removeCartLine(id);
       } catch {
-        /* debounced sync */
+        /* sync later */
       }
     }
   };
@@ -188,6 +201,13 @@ export function CartProvider({ children }) {
     setCart,
     cartCount,
     cartTotal,
+    cartSubtotal,
+    shipping,
+    orderTotal,
+    isDrawerOpen,
+    openDrawer,
+    closeDrawer,
+    toggleDrawer,
     addToCart,
     addOutfitToCart,
     updateCartQty,
@@ -196,8 +216,6 @@ export function CartProvider({ children }) {
     applySessionCart,
     loadServerCart,
     syncing,
-    toast,
-    showToast,
   };
 
   return <CartContext.Provider value={value}>{children}</CartContext.Provider>;

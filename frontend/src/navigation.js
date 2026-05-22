@@ -16,6 +16,9 @@ export const PATHS = {
   sizeGuide: "/size-guide",
   delivery: "/delivery",
   faq: "/faq",
+  admin: "/admin",
+  orderSuccess: "/order/success",
+  orderFailed: "/order/failed",
 };
 
 const PAGE_TO_PATH = {
@@ -34,6 +37,9 @@ const PAGE_TO_PATH = {
   "size-guide": PATHS.sizeGuide,
   delivery: PATHS.delivery,
   faq: PATHS.faq,
+  admin: PATHS.admin,
+  "order-success": PATHS.orderSuccess,
+  "order-failed": PATHS.orderFailed,
 };
 
 export function pageToPath(page) {
@@ -43,6 +49,8 @@ export function pageToPath(page) {
 export function pathToPage(pathname) {
   if (pathname === "/" || pathname === "") return "home";
   if (pathname.startsWith("/product/")) return "product-detail";
+  if (pathname.startsWith("/order/success")) return "order-success";
+  if (pathname.startsWith("/order/failed")) return "order-failed";
   const slug = pathname.replace(/^\//, "");
   const map = {
     shop: "shop",
@@ -59,6 +67,7 @@ export function pathToPage(pathname) {
     "size-guide": "size-guide",
     delivery: "delivery",
     faq: "faq",
+    admin: "admin",
   };
   return map[slug] || "home";
 }

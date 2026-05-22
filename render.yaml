@@ -1,0 +1,32 @@
+# Render Blueprint — DripKart API
+# Dashboard: New → Blueprint → connect repo, or create Web Service manually
+services:
+  - type: web
+    name: dripkart-api
+    runtime: node
+    rootDir: backend
+    buildCommand: npm install
+    startCommand: npm start
+    healthCheckPath: /api/health
+    plan: free
+    envVars:
+      - key: NODE_VERSION
+        value: "20"
+      - key: NODE_ENV
+        value: production
+      - key: MONGODB_URI
+        sync: false
+      - key: JWT_SECRET
+        generateValue: true
+      - key: CLIENT_ORIGIN
+        sync: false
+      - key: ALLOW_VERCEL_PREVIEWS
+        value: "true"
+      - key: RAZORPAY_KEY_ID
+        sync: false
+      - key: RAZORPAY_KEY_SECRET
+        sync: false
+      - key: ADMIN_EMAIL
+        value: admin@dripkart.com
+      - key: ADMIN_PASSWORD
+        sync: false
