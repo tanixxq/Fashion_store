@@ -3,6 +3,7 @@ import Product from "../models/Product.js";
 import { dummyProducts } from "../data/dummyProducts.js";
 import { asyncHandler } from "../utils/asyncHandler.js";
 import { formatProduct } from "../utils/formatProduct.js";
+import { isDbConnected } from "../utils/dbState.js";
 
 const router = Router();
 
@@ -51,9 +52,24 @@ function enrichDummy(p) {
 /**
  * GET /api/products — search, category, brand, sort query params
  */
+function dummyProductsResponse(req, res) {
+  const products = filterProducts(dummyProducts.map(enrichDummy), req.query);
+  return res.json({
+    success: true,
+    source: "dummy",
+    products,
+    total: products.length,
+    brands: [...new Set(dummyProducts.map((p) => p.category))],
+  });
+}
+
 router.get(
   "/",
   asyncHandler(async (req, res) => {
+    if (!isDbConnected()) {
+      return dummyProductsResponse(req, res);
+    }
+
     const count = await Product.countDocuments();
 
     if (count === 0) {
@@ -104,6 +120,14 @@ router.get(
   "/:id",
   asyncHandler(async (req, res) => {
     const { id } = req.params;
+
+    if (!isDbConnected()) {
+      const fromDummy = dummyProducts.find((p) => String(p.id) === String(id));
+      if (fromDummy) {
+        return res.json({ success: true, product: enrichDummy(fromDummy), source: "dummy" });
+      }
+      return res.status(404).json({ success: false, message: "Product not found" });
+    }
 
     const numId = Number(id);
     if (!Number.isNaN(numId)) {
